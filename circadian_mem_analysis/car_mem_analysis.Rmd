@@ -1,0 +1,1262 @@
+---
+title: "CAR MemMatch Analysis"
+author: "Meg McMahon"
+date: "10/26/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(tidyverse)
+library(reshape2)
+library(magrittr)
+library(broom)
+library(knitr)
+library(RColorBrewer)
+library(ggcorrplot)
+library(raster)
+
+```
+
+
+```{r}
+#Settings
+MIN_ACCURACY = 0.55
+
+
+#Choose combined dataset from CAR_measures.Rmd output
+#d1 <- read.csv(file.choose())
+d1 <- read.csv("~/Box/ADM_Study/ADM/data/combined_data_2018-11-19.csv")
+
+#Choose total sleep time excel sheet
+#tst <- readxl::read_xlsx(file.choose())
+#tst <- readxl::read_xlsx("~/Box/CogNeuroLab/Aging Decision Making R01/Data/CAR/Average Sleep Time.xlsx")
+
+#Read in all memmatch results
+mem <- read.csv("~/Box/ADM_Study/ADM/data/summary/memmatch_results.csv")
+
+#d <- merge(d1, tst, by = "record_id")
+d <- d1
+```
+
+
+# Data Cleaning
+#### Number of subjects with below min accuracy in each group 
+#### These subjects will be removed from analysis
+```{r}
+
+d %>%
+  group_by(group) %>%
+  summarise(min_accuracy = min(accuracy), max_accuracy = max(accuracy), min_rt = min(rt), max_rt = max(rt))
+
+
+d$sex[substr(d$sex, 0, 1) == "f" | substr(d$sex, 0, 1) == "F"] <- "F"
+d$sex[substr(d$sex, 0, 1) == "m" | substr(d$sex, 0, 1) == "M"] <- "M"
+d$sex <- factor(d$sex)
+
+
+d$edu <- substr(d$edu, 0, 2)
+d$edu <- str_pad(d$edu, 2, pad = "0")
+d$edu <- as.numeric(d$edu)
+
+
+d %>%
+  group_by(group) %>%
+  summarize(N = n(), 
+            age_mean = mean(age), age_sd = sd(age), 
+            Female = sum(sex == "F"), Male = sum(sex == "M"),
+            years_edu = mean(edu), edu_sd = sd(edu))
+```
+
+Not in dataset: "30003" "30027" "30101" "40511" "40653" "40707" "40733" "40738"
+#### New min and max accuracy excluding subjects with accuracy < min threshold
+```{r data cleaning}
+d %>%
+  group_by(group) %>%
+  summarise(min_acc = min(accuracy), max_acc = max(accuracy), mean_acc=mean(accuracy), na.rm = TRUE), min_rt = min(rt), max_rt = max(rt), mean_rt = mean(rt))
+
+
+d$sex[substr(d$sex, 0, 1) == "f" | substr(d$sex, 0, 1) == "F"] <- "F"
+d$sex[substr(d$sex, 0, 1) == "m" | substr(d$sex, 0, 1) == "M"] <- "M"
+d$sex <- factor(d$sex)
+
+
+d$edu <- substr(d$edu, 0, 2)
+d$edu <- str_pad(d$edu, 2, pad = "0")
+d$edu <- as.numeric(d$edu)
+
+```
+
+# Demographics
+```{r demographics}
+d %>%
+  group_by(group) %>%
+  summarize(N = n(), 
+            age_mean = mean(age), age_sd = sd(age), 
+            Female = sum(sex == "F"), Male = sum(sex == "M"),
+            years_edu = mean(edu), edu_sd = sd(edu))
+```
+
+
+# Accuracy and Reaction Time Barplots
+
+### Accuracy
+```{r}
+d2 <- dplyr::select(d, group, IS:fnlrgact,
+             accuracy, rt, age)
+d2 <- dplyr::select(d2, -M10_start_diff, -L5_start_diff, -M10_starttime, -L5_starttime)
+d2 <- na.omit(d2)
+
+d2.mlt <- melt(d2, id.vars=c("group", "accuracy", "rt"))
+
+d2.mlt %>%
+  subset(d2$accuracy > MIN_ACCURACY) %>%
+  ggplot(aes(x = group, y = value, # set x, y coordinates
+             color = group)) +    # color by treatment
+  geom_boxplot() +
+  facet_wrap(~variable, scales = "free_y") + 
+  theme_classic() +
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8])
+
+```
+
+
+
+```{r}
+
+require(gridExtra)
+require(ggpubr)
+
+t1 = t.test(IS ~ group, data = d)
+plot1 <- ggplot(data = d, aes(x = group, y = IS, color = group)) + 
+  geom_boxplot() + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) + 
+  ylab("interdaily stability") + 
+  labs(caption= paste("t =", round(t1$statistic, 2), "p < 0.001"))#, round(t1$p.value, 3)))
+
+t2 = t.test(IV ~ group, data = d)
+plot2 <- ggplot(data = d, aes(x = group, y = IV, color = group)) + 
+  geom_boxplot() + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) + 
+  ylab("intradaily variability") + 
+  labs(caption= paste("t =", round(t2$statistic, 2), "p =", round(t2$p.value, 3)))
+
+t3 = t.test(actmesor ~ group, data = d)
+plot3 <- ggplot(data = d, aes(x = group, y = actmesor, color = group)) + 
+  geom_boxplot() + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) + 
+  ylab("mesor") + 
+  labs(caption= paste("t =", round(t3$statistic, 2), "p =", round(t3$p.value, 3)))
+
+t4 = t.test(actupmesor ~ group, data = d)
+plot4 <- ggplot(data = d, aes(x = group, y = actupmesor, color = group)) + 
+  geom_boxplot() + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) + 
+  ylab("up mesor") + 
+  labs(caption= paste("t =", round(t4$statistic, 2), "p =", round(t4$p.value, 3)))
+
+t5 = t.test(actdownmesor ~ group, data = d)
+plot5 <- ggplot(data = d, aes(x = group, y = actdownmesor, color = group)) + 
+  geom_boxplot() + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) + 
+  ylab("down mesor") + 
+  labs(caption= paste("t =", round(t5$statistic, 2), "p < 0.001"))#, round(t5$p.value, 3)))
+
+t6 = t.test(actphi ~ group, data = d)
+plot6 <- ggplot(data = d, aes(x = group, y = actphi, color = group)) + 
+  geom_boxplot() + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) + 
+  ylab("acrophase") +
+  labs(caption= paste("t =", round(t6$statistic, 2), "p < 0.001"))#, round(t6$p.value, 3)))
+
+t7 = t.test(RA ~ group, data = d)
+plot7 <- ggplot(data = d, aes(x = group, y = RA, color = group)) + 
+  geom_boxplot() + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) + 
+  ylab("relative amplitude") +
+  labs(caption= paste("t =", round(t7$statistic, 2), "p = ", round(t7$p.value, 3)))
+
+t8 = t.test(actbeta ~ group, data = d)
+plot8 <- ggplot(data = d, aes(x = group, y = actbeta, color = group)) + 
+  geom_boxplot() + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) + 
+  ylab("beta") +
+  labs(caption= paste("t =", round(t8$statistic, 2), "p = ", round(t8$p.value, 3)))
+
+PLOT <- grid.arrange(plot1, plot2, plot7, plot8, plot3, plot4, plot5, plot6, ncol=4)
+
+```
+
+#### Accuracy by group
+```{r}
+#Accuracy by group
+t.test(accuracy ~ group, data = d1)
+d2.mlt%>%  
+  subset(d2$accuracy > MIN_ACCURACY) %>%
+  ggplot(aes(x = group, y = accuracy, color = group)) +
+  geom_boxplot() + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) 
+
+d %>%
+  subset(d$accuracy > MIN_ACCURACY) %>%
+  group_by(group) %>%
+  summarise(n = n(), min = min(accuracy), median = median(accuracy), mean = mean(accuracy), max = max(accuracy))
+
+```
+
+#### Reaction time by group
+```{r}
+
+#Reaction time by group
+t.test(rt ~ group, data = d1)
+d2.mlt%>%  
+  subset(d2$accuracy > MIN_ACCURACY) %>%
+  ggplot(aes(x = group, y = rt, color = group)) +
+  geom_boxplot() + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8])
+
+d %>%
+  subset(d$accuracy > MIN_ACCURACY) %>%
+  group_by(group) %>%
+  summarise(n = n(), min = min(rt), median = median(rt), mean = mean(rt), max = max(rt))
+
+```
+
+### Correlation plot for all subjects
+```{r}
+d2 <- dplyr::select(d, group, IS:fnlrgact, 
+             accuracy, rt, age, fo_match_RT_C,fo_mismatch_RT_C,
+             so_match_RT_C,so_mismatch_RT_C,fo_match_accuracy,fo_mismatch_accuracy,
+             so_match_accuracy,so_mismatch_accuracy,-M10_start_diff,
+             -L5_start_diff,-M10_starttime, -L5_starttime)
+
+d2[,2:length(d2)] <- sapply(d2[,2:length(d2)],as.numeric)
+d2 <- d2[complete.cases(d2),]
+
+nOA <- sum(d2$group == "OA")
+nYA <- sum(d2$group == "YA")
+
+d2_YA <- subset(d2, d2$group == "YA")
+d2_OA <- subset(d2, d2$group == "OA")
+d2[c("group")] <- list(NULL); d2_OA[c("group")] <- list(NULL); d2_YA[c("group")] <- list(NULL)
+
+d2_cor <- cor(d2, method = "pearson")
+d2_cor_OA <- cor(d2_OA, method = "pearson")
+d2_cor_YA <- cor(d2_YA, method = "pearson")
+
+ggcorrplot(d2_cor, p.mat = cor_pmat(d2), colors = c("red", "white", "orange"), ggtheme = ggplot2::theme_minimal, hc.order = FALSE, insig = 'blank')
+```
+
+### Correlation plot for older adults
+```{r}
+ggcorrplot(d2_cor_OA, p.mat = cor_pmat(d2_OA), colors = c("red", "white", "orange"), ggtheme = ggplot2::theme_minimal, hc.order = FALSE, insig = 'blank')
+```
+
+### Correlation plot for younger adults
+```{r}
+ggcorrplot(d2_cor_YA, p.mat = cor_pmat(d2_YA), colors = c("red", "white", "orange"), ggtheme = ggplot2::theme_minimal, hc.order = FALSE, insig = 'blank')
+```
+
+
+# CAR vs MemMatch Task Accuracy
+```{r plot accuracy by CAR}
+d2 <- dplyr::select(d, group, IS:fnlrgact,
+             accuracy, rt, age)
+d2 <- dplyr::select(d2, -M10_start_diff, -L5_start_diff, -M10_starttime, -L5_starttime)
+d2 <- na.omit(d2)
+
+d2.mlt <- melt(d2, id.vars=c("group", "accuracy", "rt"))
+
+d2.mlt %>%
+  ggplot(aes(x=value, y=accuracy)) + 
+  geom_point(aes(color=group)) + 
+  geom_smooth(method="lm", na.rm = TRUE, se = FALSE, color = "black") +
+  facet_wrap(~ variable, scales = "free_x") +
+  theme_classic() +
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank())
+
+
+```
+
+
+
+```{r accuracy multiple simple regression}
+
+d2 %>% 
+  dplyr::select(-accuracy) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$accuracy ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map_dbl("r.squared") %>% 
+  tidy %>%
+  dplyr::arrange(desc(x)) %>%
+  rename(r.squared = x) -> r2s
+
+ggplot(r2s, aes(x = reorder(names, r.squared), y = r.squared)) + 
+  geom_point(size = 5, color = "red") +
+  ylab(expression(R^{2})) +
+  xlab("predictors") +
+  ggtitle("Explained variance per predictor from simple regressions")
+
+
+d2 %>% 
+  dplyr::select(-accuracy) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$accuracy ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map(c("coefficients")) %>% 
+  map_dbl(8)  %>% # 8th element is the p-value 
+  tidy %>% 
+  dplyr::arrange(x) %>% 
+  rename(p.value = x) -> ps
+
+
+kable(merge(r2s, ps, by = "names", sort = FALSE), digits = 4, caption = "Accuracy")
+
+```
+
+
+# CAR vs MemMatch Task Reaction Time
+
+```{r plot reaction time by CAR}
+d2.mlt %>%
+  ggplot(aes(x=value, y=rt)) + 
+  geom_point(aes(color=group)) + 
+  geom_smooth(method="lm", na.rm = TRUE, se = FALSE, color = "black") +
+  facet_wrap(~ variable, scales = "free_x", ncol = 4) +
+  theme_classic() +
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank())
+```
+
+
+```{r reaction time multiple simple regression}
+
+d2 %>% 
+  dplyr::select(-rt) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$rt ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map_dbl("r.squared") %>% 
+  tidy %>%
+  dplyr::arrange(desc(x)) %>%
+  rename(r.squared = x) -> r2s
+
+ggplot(r2s, aes(x = reorder(names, r.squared), y = r.squared)) + 
+  geom_point(size = 5, color = "red") +
+  ylab(expression(R^{2})) +
+  xlab("predictors") +
+  ggtitle("Explained variance per predictor from simple regressions")
+
+d2 %>% 
+  dplyr::select(-rt) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$rt ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map(c("coefficients")) %>% 
+  map_dbl(8)  %>% # 8th element is the p-value 
+  tidy %>% 
+  dplyr::arrange(x) %>% 
+  rename(p.value = x) -> ps
+
+kable(merge(r2s, ps, by = "names", sort = FALSE), digits = 4, caption = "Reaction Time")
+
+```
+
+
+# Older Adults Analysis
+
+## Data Cleaning
+```{r OA data cleaning}
+d_OA <- d[d$group == "OA",] #only looking at older adults
+
+d_OA$sex[substr(d_OA$sex, 0, 1) == "f" | substr(d_OA$sex, 0, 1) == "F"] <- "F"
+d_OA$sex[substr(d_OA$sex, 0, 1) == "m" | substr(d_OA$sex, 0, 1) == "M"] <- "M"
+d_OA$sex <- factor(d_OA$sex)
+
+
+d_OA$edu <- substr(d_OA$edu, 0, 2)
+d_OA$edu <- str_pad(d_OA$edu, 2, pad = "0")
+d_OA$edu <- as.numeric(d_OA$edu)
+
+d_OA$accuracy[d_OA$accuracy < MIN_ACCURACY] <- NA
+
+sum(is.na(d_OA$accuracy))
+
+```
+
+## Demographics
+```{r OA demographics}
+d_OA %>%
+  group_by(group) %>%
+  summarize(N = n(), 
+            age_mean = mean(age), age_sd = sd(age), 
+            Female = sum(sex == "F"), Male = sum(sex == "M"),
+            years_edu = mean(edu), edu_sd = sd(edu))
+```
+
+
+## Accuracy and Reaction Time Barplots
+```{r}
+
+d2 <- dplyr::select(d_OA, IS:fnlrgact, 
+             accuracy, rt, age)
+d2 <- dplyr::select(d2, -M10_start_diff, -L5_start_diff, -M10_starttime, -L5_starttime)
+d2 <- na.omit(d2)
+
+d2.mlt <- melt(d2, id.vars=c("accuracy", "rt"))
+
+d2.mlt %>%
+  ggplot(aes(y = value)) +    # color by treatment
+  geom_boxplot(color = brewer.pal(7, "Paired")[7]) +
+  facet_wrap(~variable, scales = "free_y") + 
+  theme_classic()
+  
+#Accuracy
+d2.mlt%>%  
+  ggplot(aes(y = accuracy)) +
+  geom_boxplot(color = brewer.pal(7, "Paired")[7]) + 
+  theme_classic() 
+
+
+#Reaction time
+d2.mlt%>%  
+  ggplot(aes(y = rt)) +
+  geom_boxplot(color = brewer.pal(7, "Paired")[7]) +  
+  theme_classic() 
+
+
+
+```
+
+
+```{r}
+d2 <- dplyr::select(d_OA, group, IS:fnlrgact, 
+             accuracy, rt, age, fo_match_RT_C,fo_mismatch_RT_C,
+             so_match_RT_C,so_mismatch_RT_C,fo_match_accuracy,fo_mismatch_accuracy,
+             so_match_accuracy,so_mismatch_accuracy,-M10_start_diff,
+             -L5_start_diff,-M10_starttime, -L5_starttime)
+
+d2[,2:length(d2)] <- sapply(d2[,2:length(d2)],as.numeric)
+d2 <- d2[complete.cases(d2),]
+
+nOA <- sum(d2$group == "OA")
+
+d2_OA <- subset(d2, d2$group == "OA")
+d2_OA[c("group")] <- list(NULL)
+
+d2_cor_OA <- cor(d2_OA, method = "pearson")
+
+ggcorrplot(d2_cor_OA, p.mat = cor_pmat(d2_OA), colors = c("red", "white", "orange"), ggtheme = ggplot2::theme_minimal, hc.order = FALSE, insig = 'blank')
+```
+
+
+
+## CAR vs MemMatch Task Accuracy
+```{r}
+d2 <- dplyr::select(d_OA, IS:fnlrgact, 
+             accuracy, rt, age)
+d2 <- dplyr::select(d2, -M10_start_diff, -L5_start_diff, -M10_starttime, -L5_starttime)
+d2 <- na.omit(d2)
+
+d2.mlt <- melt(d2, id.vars=c("accuracy", "rt"))
+
+d2.mlt %>%
+  ggplot(aes(x=value, y=accuracy)) + 
+  geom_point(color = brewer.pal(7, "Paired")[7]) + 
+  geom_smooth(method="lm", na.rm = TRUE, se = FALSE, color = "black") +
+  facet_wrap(~ variable, scales = "free_x") +
+  theme_classic()
+
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank())
+
+
+```
+
+
+```{r}
+
+d2 %>% 
+  dplyr::select(-accuracy) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$accuracy ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map_dbl("r.squared") %>% 
+  tidy %>%
+  dplyr::arrange(desc(x)) %>%
+  rename(r.squared = x) -> r2s
+
+ggplot(r2s, aes(x = reorder(names, r.squared), y = r.squared)) + 
+  geom_point(size = 5, color = "red") +
+  ylab(expression(R^{2})) +
+  xlab("predictors") +
+  ggtitle("Explained variance per predictor from simple regressions")
+
+
+d2 %>% 
+  dplyr::select(-accuracy) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$accuracy ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map(c("coefficients")) %>% 
+  map_dbl(8)  %>% # 8th element is the p-value 
+  tidy %>% 
+  dplyr::arrange(x) %>% 
+  rename(p.value = x) -> ps
+
+
+kable(merge(r2s, ps, by = "names", sort = FALSE), digits = 4, caption = "Accuracy")
+
+```
+
+
+## CAR vs MemMatch Task Reaction Time
+
+```{r}
+d2.mlt %>%
+  ggplot(aes(x=value, y=rt)) + 
+  geom_point(color = brewer.pal(7, "Paired")[7]) +  
+  geom_smooth(method="lm", na.rm = TRUE, se = FALSE, color = "black") +
+  facet_wrap(~ variable, scales = "free_x", ncol = 4) +
+  theme_classic() +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank())
+```
+
+
+```{r}
+
+d2 %>% 
+  dplyr::select(-rt) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$rt ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map_dbl("r.squared") %>% 
+  tidy %>%
+  dplyr::arrange(desc(x)) %>%
+  rename(r.squared = x) -> r2s
+
+ggplot(r2s, aes(x = reorder(names, r.squared), y = r.squared)) + 
+  geom_point(size = 5, color = "red") +
+  ylab(expression(R^{2})) +
+  xlab("predictors") +
+  ggtitle("Explained variance per predictor from simple regressions")
+
+d2 %>% 
+  dplyr::select(-rt) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$rt ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map(c("coefficients")) %>% 
+  map_dbl(8)  %>% # 8th element is the p-value 
+  tidy %>% 
+  dplyr::arrange(x) %>% 
+  rename(p.value = x) -> ps
+
+kable(merge(r2s, ps, by = "names", sort = FALSE), digits = 4, caption = "Reaction Time")
+
+```
+
+
+# Younger Adults Analysis
+
+## Data Cleaning
+```{r YA data cleaning}
+d_YA <- d[d$group == "YA",] #only looking at older adults
+
+d_YA$sex[substr(d_YA$sex, 0, 1) == "f" | substr(d_YA$sex, 0, 1) == "F"] <- "F"
+d_YA$sex[substr(d_YA$sex, 0, 1) == "m" | substr(d_YA$sex, 0, 1) == "M"] <- "M"
+d_YA$sex <- factor(d_YA$sex)
+
+
+d_YA$edu <- substr(d_YA$edu, 0, 2)
+d_YA$edu <- str_pad(d_YA$edu, 2, pad = "0")
+d_YA$edu <- as.numeric(d_YA$edu)
+
+d_YA$accuracy[d_YA$accuracy < 0.55] <- NA
+
+sum(is.na(d_YA$accuracy))
+d_YA$group[is.na(d_YA$accuracy)]
+
+
+```
+
+## Demographics
+```{r YA demographics}
+d_YA %>%
+  group_by(group) %>%
+  summarize(N = n(), 
+            age_mean = mean(age), age_sd = sd(age), 
+            Female = sum(sex == "F"), Male = sum(sex == "M"),
+            years_edu = mean(edu), edu_sd = sd(edu))
+```
+
+
+## Accuracy and Reaction Time Barplots
+```{r}
+
+d2 <- dplyr::select(d_YA, IS:fnlrgact, 
+             accuracy, rt, age)
+d2 <- dplyr::select(d2, -M10_start_diff, -L5_start_diff, -M10_starttime, -L5_starttime)
+d2 <- na.omit(d2)
+
+d2.mlt <- melt(d2, id.vars=c("accuracy", "rt"))
+
+d2.mlt %>%
+  ggplot(aes(y = value)) +    # color by treatment
+  geom_boxplot(color = brewer.pal(8, "Paired")[8]) +
+  facet_wrap(~variable, scales = "free_y") + 
+  theme_classic()
+  
+#Accuracy
+d2.mlt%>%  
+  ggplot(aes(y = accuracy)) +
+  geom_boxplot(color = brewer.pal(8, "Paired")[8]) + 
+  theme_classic() 
+
+
+#Reaction time
+d2.mlt%>%  
+  ggplot(aes(y = rt)) +
+  geom_boxplot(color = brewer.pal(8, "Paired")[8]) +  
+  theme_classic() 
+
+
+
+```
+
+
+```{r}
+d2 <- dplyr::select(d_YA, group, IS:fnlrgact, 
+             accuracy, rt, age, fo_match_RT_C,fo_mismatch_RT_C,
+             so_match_RT_C,so_mismatch_RT_C,fo_match_accuracy,fo_mismatch_accuracy,
+             so_match_accuracy,so_mismatch_accuracy,-M10_start_diff,
+             -L5_start_diff,-M10_starttime, -L5_starttime)
+
+d2[,2:length(d2)] <- sapply(d2[,2:length(d2)],as.numeric)
+d2 <- d2[complete.cases(d2),]
+
+nYA <- sum(d2$group == "YA")
+
+d2_YA <- subset(d2, d2$group == "YA")
+d2[c("group")] <- list(NULL); d2_YA[c("group")] <- list(NULL)
+
+d2_cor <- cor(d2, method = "pearson")
+d2_cor_YA <- cor(d2_YA, method = "pearson")
+
+ggcorrplot(d2_cor, p.mat = cor_pmat(d2), colors = c("red", "white", "orange"), ggtheme = ggplot2::theme_minimal, hc.order = FALSE, insig = 'blank')
+
+ggcorrplot(d2_cor_YA, p.mat = cor_pmat(d2_YA), colors = c("red", "white", "orange"), ggtheme = ggplot2::theme_minimal, hc.order = FALSE, insig = 'blank')
+```
+
+
+
+## CAR vs MemMatch Task Accuracy
+```{r}
+
+
+
+d2 <- dplyr::select(d_YA, IS:fnlrgact, 
+             accuracy, rt, age)
+d2 <- dplyr::select(d2, -M10_start_diff, -L5_start_diff, -M10_starttime, -L5_starttime)
+d2 <- na.omit(d2)
+
+d2.mlt <- melt(d2, id.vars=c("accuracy", "rt"))
+
+d2.mlt %>%
+  ggplot(aes(x=value, y=accuracy)) + 
+  geom_point(color = brewer.pal(8, "Paired")[8]) + 
+  geom_smooth(method="lm", na.rm = TRUE, se = FALSE, color = "black") +
+  facet_wrap(~ variable, scales = "free_x") +
+  theme_classic()
+
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank())
+
+
+```
+
+
+```{r}
+
+d2 %>% 
+  dplyr::select(-accuracy) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$accuracy ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map_dbl("r.squared") %>% 
+  tidy %>%
+  dplyr::arrange(desc(x)) %>%
+  rename(r.squared = x) -> r2s
+
+ggplot(r2s, aes(x = reorder(names, r.squared), y = r.squared)) + 
+  geom_point(size = 5, color = "red") +
+  ylab(expression(R^{2})) +
+  xlab("predictors") +
+  ggtitle("Explained variance per predictor from simple regressions")
+
+
+d2 %>% 
+  dplyr::select(-accuracy) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$accuracy ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map(c("coefficients")) %>% 
+  map_dbl(8)  %>% # 8th element is the p-value 
+  tidy %>% 
+  dplyr::arrange(x) %>% 
+  rename(p.value = x) -> ps
+
+
+kable(merge(r2s, ps, by = "names", sort = FALSE), digits = 4, caption = "Accuracy")
+
+```
+
+
+## CAR vs MemMatch Task Reaction Time
+
+```{r}
+d2.mlt %>%
+  ggplot(aes(x=value, y=rt)) + 
+  geom_point(color = brewer.pal(8, "Paired")[8]) +  
+  geom_smooth(method="lm", na.rm = TRUE, se = FALSE, color = "black") +
+  facet_wrap(~ variable, scales = "free_x", ncol = 4) +
+  theme_classic() +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank())
+```
+
+
+```{r}
+
+d2 %>% 
+  dplyr::select(-rt) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$rt ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map_dbl("r.squared") %>% 
+  tidy %>%
+  dplyr::arrange(desc(x)) %>%
+  rename(r.squared = x) -> r2s
+
+ggplot(r2s, aes(x = reorder(names, r.squared), y = r.squared)) + 
+  geom_point(size = 5, color = "red") +
+  ylab(expression(R^{2})) +
+  xlab("predictors") +
+  ggtitle("Explained variance per predictor from simple regressions")
+
+d2 %>% 
+  dplyr::select(-rt) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$rt ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map(c("coefficients")) %>% 
+  map_dbl(8)  %>% # 8th element is the p-value 
+  tidy %>% 
+  dplyr::arrange(x) %>% 
+  rename(p.value = x) -> ps
+
+kable(merge(r2s, ps, by = "names", sort = FALSE), digits = 4, caption = "Reaction Time")
+
+```
+
+# All Groups Analysis by Match vs. Mismatch, Face vs. Scene Memory Match Trial
+
+# MemMatch Task
+The associative memory tasks are modified from a delayed match-to-memory task used by Mack and Preston, 2016.
+
+#### Phase I: Learn and remember
+During scanning, subjects learn associations between objects and pictures of well-known faces or scenes. Paired objects are presented on a screen for 2 seconds. 
+
+!["Face-Object Association"](figures/fomatch.png)
+
+!["Scene-Object Association"](figures/somatch.png)
+
+
+Then, subjects enter the “remembering” phase, for which they are presented with an object at the top of the screen and three images at the bottom of the screen. The subject has as much time as needed to make a dplyr::selection corresponding to the correct pair association using the button box. After the dplyr::selection is made, the correct pair is shown on the screen. Participants must achieve a minimum accuracy of 60% to move on to the memory match task.
+
+!["Learn and Remember"](figures/folearn.png)
+!["Learn and Remember"](figures/solearn.png)
+
+
+#### Memory match
+During the memory match task, participants are tested on the associations learned during the “learn and remember” phase. On each trial an object will be presented as a memory cue, followed by either a face or a scene. The participant must decide whether the pair is a match or mismatch within 3 seconds. Previously, this task was used as a “match to memory” task where it was shown that hippocampal activation during retrieval was coupled to regions that showed content-specific item reinstatement.
+
+!["Face-Object Match Trial"](figures/fotest.png)
+
+
+!["Scene-Object Mismatch Trial"](figures/sotest.png)
+
+
+## MemMatch Task Accuracy by Match vs. Mismatch Trial
+
+```{r}
+
+d2 <- dplyr::select(d, group, IS:fnlrgact,
+             match_accuracy, mismatch_accuracy)
+d2 <- dplyr::select(d2, -M10_start_diff, -L5_start_diff, -M10_starttime, -L5_starttime)
+d2 <- na.omit(d2)
+
+d2.mlt <- melt(d2, id.vars=c("group", "match_accuracy", "mismatch_accuracy"))
+
+#Accuracy on match trials by group
+d2.mlt%>%  
+  ggplot(aes(x = group, y = match_accuracy, color = group)) +
+  geom_boxplot() + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8])
+
+#Accuracy on mismatch trials by group
+d2.mlt%>%  
+  ggplot(aes(x = group, y = mismatch_accuracy, color = group)) +
+  geom_boxplot() + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8])
+```
+
+
+
+```{r match vs mismatch trials}
+
+d2.mlt %>%
+  ggplot(aes(x=value, y=match_accuracy)) + 
+  geom_point(aes(color=group)) + 
+  geom_smooth(method="lm", na.rm = TRUE, se = FALSE, color = "black") +
+  facet_wrap(~ variable, scales = "free_x") +
+  theme_classic() +
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank())
+
+d2.mlt %>%
+  ggplot(aes(x=value, y=mismatch_accuracy)) + 
+  geom_point(aes(color=group)) + 
+  geom_smooth(method="lm", na.rm = TRUE, se = FALSE, color = "black") +
+  facet_wrap(~ variable, scales = "free_x", ncol = 4) +
+  theme_classic() +
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank())
+
+d2 %>% 
+  dplyr::select(-match_accuracy) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$match_accuracy ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map_dbl("r.squared") %>% 
+  tidy %>%
+  dplyr::arrange(desc(x)) %>%
+  rename(r.squared = x) -> r2s
+
+
+
+ggplot(r2s, aes(x = reorder(names, r.squared), y = r.squared)) + 
+  geom_point(size = 5, color = "red") +
+  ylab(expression(R^{2})) +
+  xlab("predictors") +
+  ggtitle("Explained variance per predictor from simple regressions")
+
+d2 %>% 
+  dplyr::select(-match_accuracy) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$match_accuracy ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map(c("coefficients")) %>% 
+  map_dbl(8)  %>% # 8th element is the p-value 
+  tidy %>% 
+  dplyr::arrange(x) %>% 
+  rename(p.value = x) -> ps
+
+
+kable(merge(r2s, ps, by = "names", sort = FALSE), digits = 4, caption = "Match Accuracy")
+
+
+d2 %>% 
+  dplyr::select(-mismatch_accuracy) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$mismatch_accuracy ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map_dbl("r.squared") %>% 
+  tidy %>%
+  dplyr::arrange(desc(x)) %>%
+  rename(r.squared = x) -> r2s
+
+
+
+ggplot(r2s, aes(x = reorder(names, r.squared), y = r.squared)) + 
+  geom_point(size = 5, color = "red") +
+  ylab(expression(R^{2})) +
+  xlab("predictors") +
+  ggtitle("Explained variance per predictor from simple regressions")
+
+d2 %>% 
+  dplyr::select(-mismatch_accuracy) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$mismatch_accuracy ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map(c("coefficients")) %>% 
+  map_dbl(8)  %>% # 8th element is the p-value 
+  tidy %>% 
+  dplyr::arrange(x) %>% 
+  rename(p.value = x) -> ps
+
+
+kable(merge(r2s, ps, by = "names", sort = FALSE), digits = 4, caption = "Mismatch Accuracy")
+
+```
+
+
+## MemMatch Task Reaction Time by Match vs. Mismatch Trial
+
+```{r}
+d2 <- dplyr::select(d, group, IS:fnlrgact,
+             match_RT_C, mismatch_RT_C)
+d2 <- dplyr::select(d2, -M10_start_diff, -L5_start_diff, -M10_starttime, -L5_starttime)
+d2 <- na.omit(d2)
+
+d2.mlt <- melt(d2, id.vars=c("group", "match_RT_C", "mismatch_RT_C"))
+
+# Reaction time on match trials by group
+d2.mlt%>%  
+  ggplot(aes(x = group, y = match_RT_C, color = group)) +
+  geom_boxplot() + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8])
+
+# Reaction time on mismatch trials by group
+d2.mlt%>%  
+  ggplot(aes(x = group, y = mismatch_RT_C, color = group)) +
+  geom_boxplot() + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8])
+```
+
+
+
+```{r match vs. mismatch reaction time}
+
+d2.mlt %>%
+  ggplot(aes(x=value, y=match_RT_C)) + 
+  geom_point(aes(color=group)) + 
+  geom_smooth(method="lm", na.rm = TRUE, se = FALSE, color = "black") +
+  facet_wrap(~ variable, scales = "free_x") +
+  theme_classic() +
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank())
+
+d2.mlt %>%
+  ggplot(aes(x=value, y=mismatch_RT_C)) + 
+  geom_point(aes(color=group)) + 
+  geom_smooth(method="lm", na.rm = TRUE, se = FALSE, color = "black") +
+  facet_wrap(~ variable, scales = "free_x", ncol = 4) +
+  theme_classic() +
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank())
+
+d2 %>% 
+  dplyr::select(-match_RT_C) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$match_RT_C ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map_dbl("r.squared") %>% 
+  tidy %>%
+  dplyr::arrange(desc(x)) %>%
+  rename(r.squared = x) -> r2s
+
+
+
+ggplot(r2s, aes(x = reorder(names, r.squared), y = r.squared)) + 
+  geom_point(size = 5, color = "red") +
+  ylab(expression(R^{2})) +
+  xlab("predictors") +
+  ggtitle("Explained variance per predictor from simple regressions")
+
+d2 %>% 
+  dplyr::select(-match_RT_C) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$match_RT_C ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map(c("coefficients")) %>% 
+  map_dbl(8)  %>% # 8th element is the p-value 
+  tidy %>% 
+  dplyr::arrange(x) %>% 
+  rename(p.value = x) -> ps
+
+
+kable(merge(r2s, ps, by = "names", sort = FALSE), digits = 4, caption = "Match Reaction Time")
+
+
+d2 %>% 
+  dplyr::select(-mismatch_RT_C) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$mismatch_RT_C ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map_dbl("r.squared") %>% 
+  tidy %>%
+  dplyr::arrange(desc(x)) %>%
+  rename(r.squared = x) -> r2s
+
+
+
+ggplot(r2s, aes(x = reorder(names, r.squared), y = r.squared)) + 
+  geom_point(size = 5, color = "red") +
+  ylab(expression(R^{2})) +
+  xlab("predictors") +
+  ggtitle("Explained variance per predictor from simple regressions")
+
+d2 %>% 
+  dplyr::select(-mismatch_RT_C) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$mismatch_RT_C ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map(c("coefficients")) %>% 
+  map_dbl(8)  %>% # 8th element is the p-value 
+  tidy %>% 
+  dplyr::arrange(x) %>% 
+  rename(p.value = x) -> ps
+
+
+kable(merge(r2s, ps, by = "names", sort = FALSE), digits = 4, caption = "Mismatch Reaction Time")
+
+```
+
+
+## MemMatch Task Accuracy by Face vs. Scene Trial
+
+```{r face vs scene stimulus accuracy}
+
+d2 <- dplyr::select(d, group, IS:fnlrgact,
+             fo_match_accuracy, fo_mismatch_accuracy,
+             so_match_accuracy, so_mismatch_accuracy)
+
+d2 <- na.omit(d2)
+
+d2 <- d2 %>%
+  as_tibble() %>%
+  mutate(fo_accuracy = (fo_match_accuracy+fo_mismatch_accuracy)/2,
+         so_accuracy = (so_match_accuracy+so_mismatch_accuracy)/2,
+         fo_match_accuracy = NULL,
+         fo_mismatch_accuracy = NULL,
+         so_match_accuracy = NULL, 
+         so_mismatch_accuracy = NULL,
+         M10_start_diff = NULL,
+         L5_start_diff = NULL,
+         M10_starttime = NULL, 
+         l5_starttime = NULL)
+
+d2.mlt <- melt(d2, id.vars=c("group", "fo_accuracy", "so_accuracy"))
+
+# Accuracy on match trials by group
+d2.mlt%>%  
+  ggplot(aes(x = group, y = fo_accuracy, color = group)) +
+  geom_boxplot() + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8])
+
+# Accuracy on mismatch trials by group
+d2.mlt%>%  
+  ggplot(aes(x = group, y = so_accuracy, color = group)) +
+  geom_boxplot() + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8])
+
+```
+
+
+```{r}
+d2.mlt %>%
+  ggplot(aes(x=value, y=fo_accuracy)) + 
+  geom_point(aes(color=group)) +
+  geom_smooth(method="lm", na.rm = TRUE, se = FALSE, color = "black") +
+  facet_wrap(~ variable, scales = "free_x", ncol = 4) +
+  theme_classic() +
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank())
+
+d2.mlt %>%
+  ggplot(aes(x=value, y=so_accuracy)) + 
+  geom_point(aes(color=group)) + 
+  geom_smooth(method="lm", na.rm = TRUE, se = FALSE, color = "black") +
+  facet_wrap(~ variable, scales = "free_x", ncol = 4) +
+  theme_classic() +
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank())
+
+
+d2 %>% 
+  dplyr::select(-fo_accuracy) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$fo_accuracy ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map_dbl("r.squared") %>% 
+  tidy %>%
+  dplyr::arrange(desc(x)) %>%
+  rename(r.squared = x) -> r2s
+
+
+
+ggplot(r2s, aes(x = reorder(names, r.squared), y = r.squared)) + 
+  geom_point(size = 5, color = "red") +
+  ylab(expression(R^{2})) +
+  xlab("predictors") +
+  ggtitle("Explained variance per predictor from simple regressions")
+
+d2 %>% 
+  dplyr::select(-fo_accuracy) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$fo_accuracy ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map(c("coefficients")) %>% 
+  map_dbl(8)  %>% # 8th element is the p-value 
+  tidy %>% 
+  dplyr::arrange(x) %>% 
+  rename(p.value = x) -> ps
+
+
+kable(merge(r2s, ps, by = "names", sort = FALSE), digits = 4, caption = "Face-Object Accuracy")
+
+
+d2 %>% 
+  dplyr::select(-so_accuracy) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$so_accuracy ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map_dbl("r.squared") %>% 
+  tidy %>%
+  dplyr::arrange(desc(x)) %>%
+  rename(r.squared = x) -> r2s
+
+
+
+ggplot(r2s, aes(x = reorder(names, r.squared), y = r.squared)) + 
+  geom_point(size = 5, color = "red") +
+  ylab(expression(R^{2})) +
+  xlab("predictors") +
+  ggtitle("Explained variance per predictor from simple regressions")
+
+d2 %>% 
+  dplyr::select(-so_accuracy) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$so_accuracy ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map(c("coefficients")) %>% 
+  map_dbl(8)  %>% # 8th element is the p-value 
+  tidy %>% 
+  dplyr::arrange(x) %>% 
+  rename(p.value = x) -> ps
+
+
+kable(merge(r2s, ps, by = "names", sort = FALSE), digits = 4, caption = "Scene-Object Accuracy")
+```
+
+
+## MemMatch Task Reaction Time by Face vs. Scene Trial
+
+
+```{r}
+
+d2 <- dplyr::select(d, group, IS:fnlrgact,
+             fo_match_RT_C, fo_mismatch_RT_C,
+             so_match_RT_C, so_mismatch_RT_C)
+d2 <- na.omit(d2)
+
+d2 <- d2 %>%
+  as_tibble() %>%
+  mutate(fo_RT = (fo_match_RT_C+fo_mismatch_RT_C)/2,
+         so_RT = (so_match_RT_C+so_mismatch_RT_C)/2,
+         fo_match_accuracy = NULL,
+         fo_mismatch_accuracy = NULL,
+         so_match_accuracy = NULL, 
+         so_mismatch_accuracy = NULL,
+         M10_start_diff = NULL,
+         L5_start_diff = NULL,
+         M10_starttime = NULL, 
+         L5_starttime = NULL) 
+
+d2.mlt <- melt(d2, id.vars=c("group", "fo_RT", "so_RT"))
+
+
+# Accuracy on match trials by group
+d2.mlt%>%  
+  ggplot(aes(x = group, y = fo_RT, color = group)) +
+  geom_boxplot() + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8])
+
+# Accuracy on mismatch trials by group
+d2.mlt%>%  
+  ggplot(aes(x = group, y = so_RT, color = group)) +
+  geom_boxplot() + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8])
+```
+
+
+```{r face vs scene reaction time}
+
+d2.mlt %>%
+  ggplot(aes(x=value, y=fo_RT)) + 
+  geom_point(aes(color=group)) + 
+  geom_smooth(method="lm", na.rm = TRUE, se = FALSE, color = "black") +
+  facet_wrap(~ variable, scales = "free_x", ncol = 4) +
+  theme_classic() +
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank())
+
+d2.mlt %>%
+  ggplot(aes(x=value, y=so_RT)) + 
+  geom_point(aes(color=group)) + 
+  geom_smooth(method="lm", na.rm = TRUE, se = FALSE, color = "black") +
+  facet_wrap(~ variable, scales = "free_x", ncol = 4) +
+  theme_classic() +
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(axis.text.y = element_blank(), axis.text.x = element_blank())
+
+
+d2 %>% 
+  dplyr::select(-fo_RT) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$fo_RT ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map_dbl("r.squared") %>% 
+  tidy %>%
+  dplyr::arrange(desc(x)) %>%
+  rename(r.squared = x) -> r2s
+
+
+
+ggplot(r2s, aes(x = reorder(names, r.squared), y = r.squared)) + 
+  geom_point(size = 5, color = "red") +
+  ylab(expression(R^{2})) +
+  xlab("predictors") +
+  ggtitle("Explained variance per predictor from simple regressions")
+
+d2 %>% 
+  dplyr::select(-fo_RT) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$fo_RT ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map(c("coefficients")) %>% 
+  map_dbl(8)  %>% # 8th element is the p-value 
+  tidy %>% 
+  dplyr::arrange(x) %>% 
+  rename(p.value = x) -> ps
+
+
+kable(merge(r2s, ps, by = "names", sort = FALSE), digits = 4, caption = "Face-Object Reaction Time")
+
+
+d2 %>% 
+  dplyr::select(-so_RT) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$so_RT ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map_dbl("r.squared") %>% 
+  tidy %>%
+  dplyr::arrange(desc(x)) %>%
+  rename(r.squared = x) -> r2s
+
+
+
+ggplot(r2s, aes(x = reorder(names, r.squared), y = r.squared)) + 
+  geom_point(size = 5, color = "red") +
+  ylab(expression(R^{2})) +
+  xlab("predictors") +
+  ggtitle("Explained variance per predictor from simple regressions")
+
+d2 %>% 
+  dplyr::select(-so_RT) %>%  # exclude outcome, leave only predictors 
+  map(~lm(d2$so_RT ~ .x, data = d2)) %>% 
+  map(summary) %>% 
+  map(c("coefficients")) %>% 
+  map_dbl(8)  %>% # 8th element is the p-value 
+  tidy %>% 
+  dplyr::arrange(x) %>% 
+  rename(p.value = x) -> ps
+
+
+kable(merge(r2s, ps, by = "names", sort = FALSE), digits = 4, caption = "Scene-Object Reaction Time")
+```
+
+
+

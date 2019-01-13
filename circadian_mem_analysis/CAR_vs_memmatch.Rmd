@@ -1,0 +1,282 @@
+---
+title: "CAR Group Differences"
+author: "Meg McMahon"
+date: "10/31/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(ggpubr)
+
+```
+
+# CAR measures by group
+
+## Data cleaning
+
+```{r data cleaning}
+MAIN_DIR <- "~/Box/ADM_Study/ADM"
+
+#Set minimum accuracy performance threshold
+MIN_ACCURACY = 0.55
+
+#load combined data csv file
+#d <- read.csv(file.choose())
+d <- read.csv("~/Box/ADM_Study/ADM/data/combined_data_2018-11-19.csv")
+
+# d$accuracy[d$accuracy < MIN_ACCURACY ] <- "NA"
+# d$fo_match_accuracy[d$fo_match_accuracy < MIN_ACCURACY] <- "NA"
+# d$fo_mismatch_accuracy[d$fo_mismatch_accuracy < MIN_ACCURACY] <- "NA"
+# d$so_match_accuracy[d$so_match_accuracy < MIN_ACCURACY] <- "NA"
+# d$so_mismatch_accuracy[d$so_mismatch_accuracy < MIN_ACCURACY] <- "NA"
+
+mem <- read.csv("~/Box/ADM_Study/ADM/data/summary/memmatch_summary.csv")
+head(mem)
+
+#mem$rt <- d$rt/1000
+mem$trial <- as.character(mem$trial)
+mem$trial[mem$trial == 1] <- "face-object match"
+mem$trial[mem$trial == 2] <- "face-object mismatch"
+mem$trial[mem$trial == 3] <- "scene-object match"
+mem$trial[mem$trial == 4] <- "scene-object mismatch"
+mem$trial <- as.factor(mem$trial)
+
+```
+
+
+```{r}
+d %>%
+  group_by(group) %>%
+  summarise (n_cut = sum(accuracy < MIN_ACCURACY), min_accuracy = min(accuracy))
+
+exclude <- d$record_id[d$accuracy < MIN_ACCURACY]
+as.tibble(cbind(record_id = d$record_id[d$accuracy < MIN_ACCURACY], accuracy = d$accuracy[d$record_id %in% exclude]))
+d <- subset(d, !(record_id %in% exclude))
+
+d %>%
+  group_by(group) %>%
+  summarise(min_accuracy = min(accuracy), max_accuracy = max(accuracy), min_rt = min(rt), max_rt = max(rt))
+
+```
+
+
+
+```{r plots}
+
+
+#Including all data points even for accuracy < 0.55
+mem %>%
+  group_by(trial) %>%
+  summarise(n = n(), min = min(accuracy), median = median(accuracy), mean = mean(accuracy), max = max(accuracy))
+
+#Excluding accuracy < 0.55
+mem %>%
+  subset(mem$accuracy > MIN_ACCURACY) %>%
+  group_by(trial) %>%
+  summarise(n = n(), min = min(accuracy), median = median(accuracy), mean = mean(accuracy), max = max(accuracy))
+
+#Excluding from analysis
+exclude <- mem$record_id[mem$accuracy < MIN_ACCURACY]
+
+as.tibble(cbind(record_id = mem$record_id[mem$accuracy < MIN_ACCURACY], trial = mem$trial[mem$accuracy < MIN_ACCURACY]))
+
+mem$accuracy[mem$accuracy < MIN_ACCURACY] <- NA
+
+```
+
+
+```{r}
+
+#Interdaily stability
+t.test(IS ~ group, data = d)
+ggplot(d, aes(x=group, y=IS)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "Interdaily Stability") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3) 
+```
+
+
+```{r}
+#Intradaily variability
+t.test(IV ~ group, data = d)
+ggplot(d, aes(x=group, y=IV)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "Interdaily Variability") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3)
+
+```
+
+
+
+```{r}
+#Relative Amplitude
+t.test(RA ~ group, data = d)
+ggplot(d, aes(x=group, y=RA)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "Relative Amplitude") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3)
+```
+
+```{r}
+#L5 activity
+t.test(L5 ~ group, data = d)
+ggplot(d, aes(x=group, y=L5)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "L5") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3)
+```
+
+
+```{r}
+#M10 activity
+t.test(M10 ~ group, data = d)
+ggplot(d, aes(x=group, y=M10)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "M10") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3)
+```
+
+
+```{r}
+#Up Mesor
+t.test(actupmesor ~ group, data = d)
+ggplot(d, aes(x=group, y=actupmesor)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "Up-Mesor") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3)
+```
+
+
+```{r}
+#Down Mesor
+t.test(actdownmesor ~ group, data = d)
+ggplot(d, aes(x=group, y=actdownmesor)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "Down-Mesor") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3)
+```
+
+
+```{r}
+#Mesor
+t.test(actmesor ~ group, data = d)
+ggplot(d, aes(x=group, y=actmesor)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "Mesor") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3)
+```
+
+
+```{r}
+#Amplitude
+t.test(actamp ~ group, data = d)
+ggplot(d, aes(x=group, y=actamp)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "Amplitude") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3)
+```
+
+
+```{r}
+#Plots PSQI
+t.test(global_psqi ~ group, data = d)
+ggplot(data = d, aes(x=group, y=global_psqi)) + 
+  geom_boxplot() +
+  geom_jitter(na.rm = TRUE) + 
+  labs(title = "Global PSQI") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3) #p = .38 with var = FALSE
+```
+
+
+```{r}
+#Plots Sleep Efficiency
+t.test(sleep_efficiency ~ group, data = d)
+ggplot(data = d, aes(x=group, y=sleep_efficiency)) + 
+  geom_boxplot() +
+  geom_jitter(na.rm = TRUE) + 
+  labs(title = "Sleep Efficiency") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3) +
+  ylim(0, 2)
+```
+
+
+```{r}
+#Plot MemMatch overall mean accuracy
+t.test(accuracy ~ group, data = d)
+ggplot(d, aes(x=group, y=accuracy)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "MemMatch Accuracy") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3) +
+  ylim(0, 1.3)
+```
+
+
+```{r}
+t.test(rt ~ group, data = d)
+ggplot(d, aes(x=group, y=rt)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "RT") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3)
+```
+
+
+```{r}
+#Accuracy across trials by group
+t.test(d$accuracy ~d$group)
+
+t.test(d$fo_match_accuracy ~d$group)
+
+t.test(d$fo_mismatch_accuracy ~d$group)
+
+t.test(d$so_match_accuracy ~d$group)
+
+t.test(d$so_mismatch_accuracy ~d$group)
+
+t.test(d$match_accuracy ~d$group)
+
+t.test(d$mismatch_accuracy ~d$group)
+
+
+
+#RT across trials by group
+t.test(d$rt ~d$group)
+
+t.test(d$fo_match_RT_C ~d$group)
+
+t.test(d$fo_match_RT_C ~d$group)
+
+t.test(d$so_match_RT_C ~d$group)
+
+t.test(d$so_mismatch_RT_C ~d$group)
+
+t.test(d$match_RT_C ~d$group)
+
+t.test(d$match_RT_C ~d$group)
+```
+

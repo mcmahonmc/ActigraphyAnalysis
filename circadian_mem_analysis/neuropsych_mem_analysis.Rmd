@@ -1,0 +1,158 @@
+---
+title: "Neuropsych Correlations"
+author: "Meg McMahon"
+date: "10/31/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Neuropsych Correlations
+
+## CAR - Neuropsych Correlation Plots
+
+```{r}
+
+#setwd(FIGURE_DIR)
+#pdf(file = paste0("CAR-Neuropsych Cor Plots ", format(Sys.time(), "%Y-%m-%d %H%M"), ".pdf"), title = "ADM Actigraphy Correlation Plots", onefile = TRUE, pointsize=3)
+
+neuroOA <- readxl::read_xlsx(paste0(MAIN_DIR, "/Neuropsych_Data_OA.xlsx"), sheet = c("TOTALS"))
+neuroYA <- readxl::read_xlsx(paste0(MAIN_DIR, "/Neuropsych_Data_YA.xlsx"), sheet = c("TOTALS"))
+
+
+sleep <- d[,c("record_id", "group", "age", "actmesor", "actupmesor", "actdownmesor", "actamp", 
+              "IS", "IV", "RA", "M10", "L5", "fact")]
+
+memmatch <- d[,c("record_id", "group", "age", "rt", "fo_match_RT_C", "fo_mismatch_RT_C", "so_match_RT_C", "so_mismatch_RT_C",
+                       "accuracy", "fo_match_accuracy", "fo_mismatch_accuracy", "so_match_accuracy", "so_mismatch_accuracy")]
+  
+psqi <- d[,c("record_id", "group", "age", 
+               "trouble_staying_awake", "sleep_enthusiasm",	"sleep_quality",	"component_one",
+               "fall_asleep_raw",	"sleep_latency_raw", "component_two", "component_three",	"sleep_efficiency",	
+               "component_four",	"sleep_disruption_raw",	"component_five",	"component_six",	"sleep_dysfunction_raw",
+               "component_seven", "global_psqi", "hours_bed")]
+
+
+sleep_neuro_YA <- merge(sleep, neuroYA, by.x = "record_id", by.y = "SubNum")
+sleep_neuro_YA <- sleep_neuro_YA[,2:14]
+sleep_neuro_YA[,2:13] <- sapply(sleep_neuro_YA[,2:13],as.numeric)
+sleep_neuro_YA <- sleep_neuro_YA[complete.cases(sleep_neuro_YA),]
+
+sleep_neuro_OA <- merge(sleep, neuroOA, by.x = "record_id", by.y = "SubNum")
+sleep_neuro_OA <- sleep_neuro_OA[,2:16]
+sleep_neuro_OA[,2:15] <- sapply(sleep_neuro_OA[,2:15],as.numeric)
+sleep_neuro_OA <- sleep_neuro_OA[complete.cases(sleep_neuro_OA),]
+
+sleep_neuro_YA[c("group")] <- list(NULL); sleep_neuro_OA[c("group", "Verbal *Don't assess")] <- list(NULL)
+
+sleep_neuro_cor_YA <- cor(sleep_neuro_YA)
+sleep_neuro_cor_OA <- cor(sleep_neuro_OA)
+
+res1_sleep_YA <- cor.mtest(sleep_neuro_cor_YA, conf.level = .95)
+res1_sleep_OA <- cor.mtest(sleep_neuro_cor_OA, conf.level = .95)
+
+nYA <- length(sleep_neuro_YA[,1])
+nOA <- length(sleep_neuro_OA[,1])
+
+###MemMatch-Neuropsych Correlations
+
+memmatch_neuro_YA <- merge(memmatch, neuroYA, by.x = "record_id", by.y = "SubNum")
+memmatch_neuro_YA <- memmatch_neuro_YA[,2:14]
+memmatch_neuro_YA[,2:13] <- sapply(memmatch_neuro_YA[,2:13],as.numeric)
+memmatch_neuro_YA <- memmatch_neuro_YA[complete.cases(memmatch_neuro_YA),]
+
+memmatch_neuro_OA <- merge(memmatch, neuroOA, by.x = "record_id", by.y = "SubNum")
+memmatch_neuro_OA <- memmatch_neuro_OA[,2:16]
+memmatch_neuro_OA[,2:15] <- sapply(memmatch_neuro_OA[,2:15],as.numeric)
+memmatch_neuro_OA <- memmatch_neuro_OA[complete.cases(memmatch_neuro_OA),]
+
+memmatch_neuro_YA[c("group")] <- list(NULL); memmatch_neuro_OA[c("group", "Verbal *Don't assess")] <- list(NULL)
+
+memmatch_neuro_cor_YA <- cor(memmatch_neuro_YA)
+memmatch_neuro_cor_OA <- cor(memmatch_neuro_OA)
+
+res1_memmatch_YA <- cor.mtest(memmatch_neuro_cor_YA, conf.level = .95)
+res1_memmatch_OA <- cor.mtest(memmatch_neuro_cor_OA, conf.level = .95)
+
+###PSQI-Neuropsych Correlations
+
+psqi_neuro_YA <- merge(psqi, neuroYA, by.x = "record_id", by.y = "SubNum")
+psqi_neuro_YA <- psqi_neuro_YA[,2:21]
+psqi_neuro_YA[,2:20] <- sapply(psqi_neuro_YA[,2:20],as.numeric)
+psqi_neuro_YA <- psqi_neuro_YA[complete.cases(psqi_neuro_YA),]
+
+psqi_neuro_OA <- merge(psqi, neuroOA, by.x = "record_id", by.y = "SubNum")
+psqi_neuro_OA <- psqi_neuro_OA[,2:23]
+psqi_neuro_OA[,2:22] <- sapply(psqi_neuro_OA[,2:22],as.numeric)
+psqi_neuro_OA <- psqi_neuro_OA[complete.cases(psqi_neuro_OA),]
+
+psqi_neuro_YA[c("group")] <- list(NULL); psqi_neuro_OA[c("group", "Verbal *Don't assess")] <- list(NULL)
+
+psqi_neuro_cor_YA <- cor(psqi_neuro_YA)
+psqi_neuro_cor_OA <- cor(psqi_neuro_OA)
+
+res1_psqi_YA <- cor.mtest(psqi_neuro_cor_YA, conf.level = .95)
+res1_psqi_OA <- cor.mtest(psqi_neuro_cor_OA, conf.level = .95)
+
+pdf(file = paste0("/figures/", format(Sys.time(), "%Y-%m-%d"), "/Neuropsych Correlations", format(Sys.time(), "%H%M"), ".pdf"), 
+    onefile = TRUE, pointsize=6)
+
+#Actigraph-Neuropsych Corplots
+ggcorrplot(sleep_neuro_cor_YA, p.mat = cor_pmat(sleep_neuro_YA), hc.order = FALSE, type='lower', insig = 'blank')
+
+
+ggcorrplot(sleep_neuro_cor_OA, p.mat = cor_pmat(sleep_neuro_OA), hc.order = FALSE, type='lower', insig = 'blank')
+
+#MemMatch-Neuropsych Corplots
+ggcorrplot(memmatch_neuro_cor_YA, p.mat = cor_pmat(memmatch_neuro_YA), hc.order = FALSE, type='lower', insig = 'blank')
+
+ggcorrplot(memmatch_neuro_cor_OA, p.mat = cor_pmat(memmatch_neuro_OA), hc.order = FALSE, type='lower', insig = 'blank')
+
+
+#PSQI-Neuropsych Corplots
+ggcorrplot(psqi_neuro_cor_YA, p.mat = cor_pmat(psqi_neuro_YA), hc.order = FALSE, type='lower', insig = 'blank')
+
+ggcorrplot(psqi_neuro_cor_OA, p.mat = cor_pmat(psqi_neuro_OA), hc.order = FALSE, type='lower', insig = 'blank')
+
+
+# dev.off()
+
+```
+
+## CAR - PSQI Correlation Plots
+
+```{r}
+
+#setwd(FIGURE_DIR)
+#pdf(file = paste0("PSQI-MemMatch Cor Plots ", format(Sys.time(), "%Y-%m-%d %H%M"), ".pdf"), title = "ADM Actigraphy Correlation Plots", onefile = TRUE, pointsize=3)
+
+#PSQI vs MemMatch
+sleep2 <- d[, c(
+  "group","accuracy","rt","fo_match_RT_C","fo_mismatch_RT_C","so_match_RT_C",
+  "so_mismatch_RT_C","fo_match_accuracy", "fo_mismatch_accuracy",
+  "so_match_accuracy","so_mismatch_accuracy","trouble_staying_awake",
+  "sleep_enthusiasm","sleep_quality","component_one","fall_asleep_raw",
+  "sleep_latency_raw","component_two","component_three","sleep_efficiency",
+  "component_four","sleep_disruption_raw","component_five","component_six",
+  "sleep_dysfunction_raw","component_seven","global_psqi", "hours_bed")]
+
+
+sleep2[,2:28] <- sapply(sleep2[,2:28],as.numeric)
+sleep2 <- sleep2[complete.cases(sleep2),]
+
+sleep2_YA <- subset(sleep2, sleep2$group == "YA")
+sleep2_OA <- subset(sleep2, sleep2$group == "OA")
+sleep2[c("group")] <- list(NULL); sleep2_OA[c("group")] <- list(NULL); sleep2_YA[c("group")] <- list(NULL)
+
+sleep2_cor <- cor(sleep2)
+sleep2_cor_OA <- cor(sleep2_OA)
+sleep2_cor_YA <- cor(sleep2_YA)
+
+ggcorrplot(sleep2_cor, p.mat = cor_pmat(sleep2), colors = c("red", "white", "blue"), ggtheme = ggplot2::theme_minimal, hc.order = FALSE, type='lower', insig = 'blank')
+
+ggcorrplot(sleep2_cor_OA, p.mat = cor_pmat(sleep2_OA), colors = c("red", "white", "blue"), ggtheme = ggplot2::theme_minimal, hc.order = FALSE, type='lower', insig = 'blank')
+
+ggcorrplot(sleep2_cor_YA, p.mat = cor_pmat(sleep2_YA), colors = c("red", "white", "blue"), ggtheme = ggplot2::theme_minimal, hc.order = FALSE, type='lower', insig = 'blank')
+```

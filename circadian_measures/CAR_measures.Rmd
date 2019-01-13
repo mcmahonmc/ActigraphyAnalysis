@@ -1,0 +1,460 @@
+---
+title: "Compute CAR Values and Merge Survey Data"
+output: html_notebook
+author: Megan McMahon
+---
+
+## Compute CAR Measures and Merge with Survey Data
+
+
+## A Note on Data Structure
+#### Data should be organized according to the following format shown below: 
+
+*PROJECT FOLDER
+-DATA
+--ACTIGRAPHY
+---SUBFOLDER
+----NEW (FOLDER CONTAINING CLEANED ACTIGRAPHY FILES FROM ACTIGRAPH.PY)
+--BEHAVIORAL (TASK DATA)
+--CAR (CIRCADIAN MEASURES)
+--SUMMARY (COMBINED OUTPUT)
+--SURVEY (REDCAP CSV)*
+
+![](figures/data_structure.png)
+
+
+# Select directory with actigraph files for analysis
+## At the prompt, pick any one of the files inside the new folder.
+
+![](figures/SELECT_FILE.png)
+
+```{r setup, echo = FALSE}
+library(lubridate)
+library(ggplot2) 
+library(dplyr)
+library(stringr)
+
+
+#Select the FIRST FILE in the "new" actigraphy data you wish to analyze
+#DATA_PATH <- file.choose()
+DATA_PATH <- "/Users/megmcmahon/Box/ADM_Study/ADM/data/actigraphy/cleaned_09-21-2018/new/30003_10_23_2017_1_25_00_PM_New_Analysis.csv"
+
+MAIN_DIR <- substr(DATA_PATH, 1, unlist(stringr::str_locate_all(pattern ='/data/', DATA_PATH))[1])
+ACT_DIR <- substr(DATA_PATH, 1, unlist(stringr::str_locate_all(pattern ='/new/', DATA_PATH))[1])
+
+
+#SETTINGS
+#set sample rate of watch
+SR = 2/60
+
+#set minimum number of days subjects must wear the watch
+act_period = 10
+
+#set max percentage of missing activity values a subject can have after cleaning script
+min_activity_values = 0.10
+
+#set number of digits in record id -- can automate this later
+id_length = 5
+
+if (!dir.exists(paste0(ACT_DIR, "/text"))) {
+  dir.create(paste0(ACT_DIR, "/text"))
+} 
+
+if (!dir.exists(paste0(ACT_DIR, "/processed"))) {
+  dir.create(paste0(ACT_DIR, "/processed"))
+} 
+
+if (!dir.exists(paste0(ACT_DIR, "/residuals"))) {
+  dir.create(paste0(ACT_DIR, "/residuals"))
+} 
+
+```
+
+# Prep for nparACT 
+## Convert to .txt
+
+## Before getting started
+Check csv output from the actigraph.py script. Ensure naming is consistent for each of the files (should start with record ID number, not "ADM_")
+
+## 1) Convert actigraph files to .txt
+This is important because when we input the actigraph data into the nparACT package later on, it will only accept .txt files.
+
+For more information about the format of input files to run the nparACT package, see https://cran.r-project.org/web/packages/nparACT/nparACT.pdf. 
+
+```{r convert to txt}
+
+#Gets files and list of 4 digit subject IDs
+files <- list.files(paste0(ACT_DIR, "/new"), pattern= "New_Analysis.csv", full.names = TRUE)
+record_id <- substr(basename(files),1, id_length)
+
+# Get list of duplicated files
+SPLIT <- strsplit(files, "/")
+dup_files = files[duplicated(substr(sapply(SPLIT, "[", 10), 0, id_length))]
+dup_records = substr(basename(dup_files), 1, id_length)
+
+# Read in .csv files, set new wd and save .txt to new directory, reset directory
+discard = c()
+for (i in 1:length(files)) {
+  filename <- paste0(ACT_DIR, "/text/", record_id[i],".txt")
+  act <- read.csv(files[i], skip = 1, header = TRUE, row.names = NULL)
+  act [,1] <- ymd_hms(as.character(act[,1]), tz = "UTC")
+  colnames(act) <- c("datetime", "activity")
+  
+  
+  #checks that subjects have no more than 10% missing values
+  # if ( (sum(is.na(act$activity))) / (length(act$activity)) > 0.10) {
+  # error = paste("ERROR: ", record_id[i], (sum(is.na(act$activity))) / (length(act$activity)), "values missing")
+  # print(error)
+  # discard_new <- cbind(record_id, error)
+  # discard <- rbind(discard, discard_new)
+  # }
+  
+  #checks that subjects wore watch for at least 10 days
+  #discards subjects with 2 files of less than 10 day period bc will not be able to compute CARs with cosinor model or nparACT package
+  if (round(difftime(tail(act$datetime, 1), head(act$datetime, 1))) < act_period) {
+    error = paste0("DISCARD SUBJECT: ", record_id[i], " wore actigraph for ", difftime(tail(act$datetime, 1), head(act$datetime, 1)), " days")
+    print(error)
+    discard_new <- cbind(record_id[i], error)
+    discard <- rbind(discard, discard_new)
+    next
+  } else {
+    
+    #only keep most recent 10 days of data for all subjects
+    start = ymd_hms(tail(act$datetime, 1), tz="UTC") - days(act_period)
+    act_all <- act
+    cut <- act[act$datetime < start, ]
+    act <- act[act$datetime >= start, ]
+    
+    #write.table(act, file = filename, col.names = FALSE, row.names = FALSE, sep = " ")
+    write.table(discard, file = paste0(ACT_DIR, "/discard.txt"), col.names = FALSE, row.names = FALSE, sep = " ")
+  }
+  
+}
+
+print(paste0("TOTAL NUMBER FILES: ", length(files)))
+print(paste0("TOTAL AFTER REMOVING DUPLICATES: ", length(files) - length(dup_files)))
+print(paste0("TOTAL AFTER REMOVING < MIN PERIOD: ", length(files) - length(dup_files) - nrow(discard) + sum(unique(discard[,1]) %in% dup_records)))
+```
+
+##nparACT
+Run nparACT package to compute IS, IV, RA, L5, M10, L5 time, M10 time
+
+Computes interdaily stability (IS), intradaily variability (IV) & the relative amplitude
+(RA) from actigraphy data as described in Blume et al. (2016). Additionally, it also computes L5 (i.e. the 5 hours with lowest average actigraphy amplitude) and M10 (the 10 hours with highest average amplitude) as well as the respective start times. 
+
+The flex versions will also compute the L-value for a user-defined number of minutes. IS describes the strength of coupling of a rhythm to supposedly stable zeitgebers.
+
+It varies between 0 (Gaussian Noise) and 1 for perfect IS. IV describes the fragmentation of a rhythm, i.e. the frequency and extent of transitions between rest and activity.
+
+It is near 0 for a perfect sine wave, about 2 for Gaussian noise and may be even higher when a definite ultradian period of about 2 hrs is present. RA is the relative amplitude of a rhythm. Note that to obtain reliable results, actigraphy data should cover a reasonable number of days.
+
+```{r}
+library(nparACT)
+library(dplyr)
+library(stringr)
+
+
+files <- list.files(paste0(ACT_DIR, "/text"), pattern= ".txt", full.names = TRUE)
+record_id <- substr(basename(files),1, id_length)
+
+#Get IS, IV, RA, L5, and M10 values
+npar_data <- nparACT_base_loop(paste0(ACT_DIR, "/text"), SR)
+record_id <- unique(record_id)
+base_data <- cbind(npar_data, record_id)
+base_data <- base_data[c("record_id","IS", "IV", "RA", "L5", "L5_starttime", "M10", "M10_starttime")]
+
+# Convert Start Time Variables
+base_data$L5_start_diff <-  base_data$L5_starttime  
+base_data$M10_start_diff <-  base_data$M10_starttime  
+base_data <- transform(base_data, M10_start_diff = as.difftime(M10_start_diff, units = "hours"), 
+                       L5_start_diff = as.difftime(L5_start_diff, units = "hours"))
+
+write.csv(base_data, file = paste0(MAIN_DIR, "/data/CAR/nparact_", format(Sys.time(), "%Y-%m-%d"), ".csv"), row.names = FALSE)
+```
+
+## CAR processed
+### 1) Convert Variables
+This converts actigraphy measures to formats which will be input into the circadian activity script.
+
+
+```{r CAR process}
+library(stats)
+library(lubridate)
+
+files=list.files(paste0(ACT_DIR, "/text"), pattern= ".txt", full.names = TRUE)
+
+for (i in 1:length(files)){
+  d=read.csv(files[i],header=TRUE,sep=" ",na.string=" ")
+  colnames(d) <- c("Date", "Time", "Activity")
+  d$Datetime <- paste(d[,1], d[,2])
+  d$fixed_times=NULL
+  d$report_times=NULL
+  
+  
+  l=dim(d)[1]
+  d$Time=as.character(d$Time)
+  d$hour=rep(999,l)
+  d$minute=rep(999,l)
+  d$hour=as.numeric(hour(hms(d$Time)))
+  d$minute=as.numeric(minute(hms(d$Time)))
+  d$cloktime=d$hour+(d$minute/60)
+  
+  
+  d$sub=substring(basename(files[i]),1,id_length)
+  subject=d$sub[1]
+  
+  if (sum(d$cloktime)==0) {
+    print(paste0("CLOKTIME ERROR: SUBJECT ", subject))
+    next
+  }
+  
+  filename = paste0(ACT_DIR, "/processed/", subject, "_fixed.csv")
+  write.csv(d, filename, row.names = FALSE)
+}
+```
+
+## CAR residuals
+
+
+```{r residuals}
+
+files = list.files(paste0(ACT_DIR, "/processed"), pattern = "*_fixed.csv", full.names = TRUE)
+
+for (i in 1:length(files)){
+  d=read.table(files[i],header=TRUE,sep=",",na.string="NA")
+  subject = d$sub[1]
+  d$twopio24 = (2*3.14159)/24 
+  d$xcos = cos(d$twopio24*d$cloktime) 
+  d$xsin = sin(d$twopio24*d$cloktime)
+  
+  #d$activity=as.character(d$ZCM)
+  #d$activity=as.numeric(d$PIM, "NA")
+  d$lactivity = log((d$Activity +1),10)
+  
+  allwatch=d[,c("sub","cloktime","lactivity","xcos","xsin","twopio24")]
+  allwatch=na.omit(allwatch)
+  
+  model=lm(allwatch$lactivity ~ allwatch$xcos + allwatch$xsin)
+  allwatch$linactxb=coef(model)['(Intercept)']
+  allwatch$linactcos=coef(model)['allwatch$xcos']
+  allwatch$linactsin=coef(model)['allwatch$xsin']
+  #need column for residuals called linract
+  allwatch$linract=model$residuals
+  
+  filename = paste0(ACT_DIR, "/residuals/", subject, "_residuals.csv")
+  write.csv(allwatch, file = filename, row.names = FALSE)
+}
+
+print(paste0("TOTAL PROCESSED FILES: ", length(files)))
+print(paste0("TOTAL RESIDUAL FILES: ", length(list.files(paste0(ACT_DIR, "/residuals"), pattern= "*_residuals.csv"))))
+```
+
+## Cosinor Model
+Fits actigraphy data to modified cosine curve to extract circadian measures
+
+
+
+```{r CAR measures}
+
+removed = c()
+results=data.frame(c())
+files=list.files(paste0(ACT_DIR, "/residuals"), pattern= "*_residuals.csv", full.names = TRUE)
+
+for (i in 1:length(files)){
+  
+  actres1=read.table(files[i],header=TRUE,sep=",")
+  
+  actres1$linactamp = sqrt(actres1$linactcos^2 + actres1$linactsin^2)
+  actres1$linactmin = actres1$linactxb-actres1$linactamp 
+  
+  for (p in 1:length(actres1$lactivity[1])){
+    if (actres1$linactsin[1] > 0 & actres1$linactcos[1] > 0) {
+      actres1$phase = atan(actres1$linactsin/actres1$linactcos)}
+    else if (actres1$linactsin[1] > 0 & actres1$linactcos[1] < 0) {
+      actres1$phase = 3.14159 - atan(actres1$linactsin/abs(actres1$linactcos))}
+    else if (actres1$linactsin[1] < 0 & actres1$linactcos[1] < 0) {
+      actres1$phase = 3.14159 + atan(abs(actres1$linactsin)/abs(actres1$linactcos))}
+    else {(actres1$linactsin[1] < 0 & actres1$linactcos[1] > 0)
+      actres1$phase = 2*3.14159 - atan(abs(actres1$linactsin)/(actres1$linactcos))} 
+  }
+  
+  
+  actres1$linactacro = actres1$phase*24/(2*3.14159) 
+  
+  #get sum of squares (uss variable)
+  linractuss=(sum((actres1$linract)^2))-((sum(actres1$linract))^2/(length(actres1$linract))) 
+  
+  #num_nonmissingvalues
+  nlinract=dim(actres1)[1]
+  
+  
+  #nonlinear regression
+  carhythm = function(actphi,actbeta,actalph,actmin,actamp,cloktime) {
+    twopio24 = (2*3.14159)/24 
+    rhythm = cos(twopio24*(cloktime - actphi ))
+    lexpt=actbeta*(rhythm - actalph)
+    expt = exp(lexpt)
+    er = expt/(1 + expt)
+    actmin + actamp*er
+    
+  }
+  
+  
+  #if want it to print out iterations change trace=TRUE
+  b=nls(actres1$lactivity ~carhythm(actphi,actbeta,actalph,actmin,actamp,cloktime),
+        data=actres1, algorithm="port",
+        start=list(actphi = 12,actbeta = 2.00,actalph = 0.0,actmin =0,actamp=1),
+        lower=list(actphi = -3,actbeta = 0,actalph = -1,actmin =0,actamp=1),
+        upper=list(actphi = 27,actbeta = Inf,actalph = 1,actmin =Inf,actamp=5),
+        control=list(maxiter=200, warnOnly=TRUE),
+        trace=FALSE)
+  
+  actres1$rnlact=resid(b)
+  actres1$pnlact=fitted(b)	
+  
+  
+  # take estimates from model and add to actres (in SAS all5) changes parameter names
+  ## x beginning variables are the same as the e beginning variables
+  actres1$xactphi=coef(b)['actphi']
+  actres1$xactbeta=coef(b)['actbeta']
+  actres1$xactalph=coef(b)['actalph']
+  actres1$xactmin=coef(b)['actmin']
+  actres1$xactamp=coef(b)['actamp']
+  
+  actres1$coact = actres1$linactxb + actres1$linactcos*actres1$xcos + actres1$linactsin*actres1$xsin
+  
+  ncssrnlact=(sum((actres1$rnlact)^2))-((sum(actres1$rnlact))^2/(length(actres1$rnlact)))
+  cssact=(sum((actres1$lactivity)^2))-((sum(actres1$lactivity))^2/(length(actres1$lactivity)))
+  nact=length(actres1$lactivity)
+  nlinract=length(actres1$lactivity) 
+  
+  
+  actacos=acos(actres1$xactalph[1])/actres1$twopio24[1]
+  acthalftimel=-actacos + actres1$xactphi[1]
+  acthalftimer=actacos + actres1$xactphi[1]
+  actwidthratio = 2*actacos/24
+  
+  
+  if(actres1$xactalph[1] < -0.99 |actres1$xactalph[1] > 0.99){
+    actwidthratio = 0.5
+    acthalftimel = (actres1$xactphi[1] - 6)
+    acthalftimer = actres1$xactphi[1] + 6
+  }
+  
+  actdervl = -sin((acthalftimel - actres1$xactphi[1])*actres1$twopio24[1])
+  actdervr = -sin((acthalftimer - actres1$xactphi[1])*actres1$twopio24[1])	
+  
+  #sd is standard error I can get that from nls output 
+  sdactphi=summary(b)$coefficients['actphi',2]
+  sdactbeta=summary(b)$coefficients['actbeta',2]
+  sdactalph=summary(b)$coefficients['actalph',2]
+  sdactmin=summary(b)$coefficients['actmin',2]
+  sdactamp=summary(b)$coefficients['actamp',2]
+  
+  #t is t value from model
+  tactphi=summary(b)$coefficients['actphi',3]
+  tactbeta=summary(b)$coefficients['actbeta',3]
+  tactalph=summary(b)$coefficients['actalph',3]
+  tactmin=summary(b)$coefficients['actmin',3]
+  tactamp=summary(b)$coefficients['actamp',3]
+  
+  rsqact = (cssact - ncssrnlact)/cssact  
+  fact = ((cssact - ncssrnlact)/4)/(ncssrnlact/(nlinract - 5))
+  ndf = 4
+  ddfact = nlinract - 5
+  efact = ddfact/(ddfact - 2)
+  varfact = ( 2/ndf )*( efact**2 )*( (ndf + ddfact -2)/(ddfact - 4) )  #wilks p. 187 */;
+  tfact = (fact - efact)/sqrt(varfact)
+  varact = cssact/(nlinract - 1)
+  mselinact = linractuss/(nlinract - 3)
+  msenlinact = (ncssrnlact/(nlinract - 5))
+  fnlrgact = ((linractuss - ncssrnlact)/2)/(ncssrnlact/(nlinract - 5)) 
+  flinact = ((cssact - linractuss)/2)/(linractuss/(nlinract - 3)) 
+  
+  actmesor = actres1$xactmin[1] + (actres1$xactamp[1]/2) 
+  actupmesor = acthalftimel
+  actdownmesor = acthalftimer 
+  actamp=actres1$xactamp[1]
+  actbeta=actres1$xactbeta[1]
+  actphi=actres1$xactphi[1]
+  actmin=actres1$xactmin[1]
+  actalph=actres1$xactalph[1]
+  subject=actres1$sub[1]
+  session=actres1$session[1]
+  #rhythm=c(subject,actamp,actbeta,actphi,actmin,actmesor,actupmesor,actdownmesor,actalph,actwidthratio,rsqact,fact,fnlrgact)
+  rhythm=c(as.character(subject), actamp,actbeta,actphi,actmin,actmesor,actupmesor,actdownmesor,actalph,actwidthratio,rsqact,fact,fnlrgact)
+  newline <- data.frame(t(rhythm))
+  results <- rbind(results, newline)
+  
+}
+
+
+colnames(results)=c("subject","actamp","actbeta","actphi","actmin","actmesor","actupmesor","actdownmesor","actalph","actwidthratio","rsqact","fact","fnlrgact")
+head(results)
+
+write.csv(results, file=(paste0(MAIN_DIR, "/data/CAR/circadian_rhythms_", format(Sys.time(), "%Y-%m-%d"), ".csv")),row.names=FALSE)
+
+
+```
+
+## Merge data
+4) Merge Data
+
+
+```{r}
+library(dplyr)
+library(stringr)
+
+# Load redcap data from survey folder
+# Currently using 9-20
+redcap <- read.csv(file.choose())
+head(redcap)
+#redcapday2 <- read.csv(paste0(MAIN_DIR,"/data/survey/AgingDecMem_DATA_2018-10-12_0817.csv"))
+
+#Load nparact
+base_data <- read.csv(file.choose())
+head(base_data)
+
+#Load CAR analysis
+c=read.csv(file.choose())
+head(c)
+
+#Load behavioral 
+mem <- read.csv("~/Box/ADM_Study/ADM/data/summary/memmatch_results.csv")
+head(mem)
+
+###Assign Age Groups
+redcap <- redcap[!is.na(redcap$age),]
+redcap$group[ redcap$age >=18 & redcap$age <=30 ] <- "YA"
+redcap$group[ redcap$age >=60 & redcap$age <=90 ] <- "OA"
+redcap <- redcap[!is.na(redcap$group),]
+
+redcap <- subset(redcap, redcap$redcap_event_name == "online_eligibility_arm_1")
+#redcap <- subset(redcap,!duplicated(redcap$record_id)) Not doing anything
+
+#Assign subject numbers
+redcap$record_id <- str_pad(redcap$record_id, 4, pad = "0")
+for (i in 1:length(redcap$record_id)) {
+  if (redcap$group[i] == "OA") {
+    redcap$record_id[i] <- paste0("4", redcap$record_id[i])
+  } else if (redcap$group[i] == "YA") {
+    redcap$record_id[i] <- paste0("3", redcap$record_id[i])
+  }
+}
+
+head(redcap$record_id)
+
+#Merge CAR and nparact
+sleep_data <- merge(base_data, c, by.x = "record_id", by.y = "subject") 
+sleep_data$record_id <- as.character(sleep_data$record_id)
+psqi<- data.frame(redcap$record_id, redcap$global_psqi)
+colnames(psqi) <- c("record_id", "global_psqi")
+
+#Merge actigraph data and redcap data
+all_data <- merge(sleep_data, redcap, by = "record_id")
+all_data$global_psqi[all_data$global_psqi > 21] <- NA
+
+d <- merge(all_data, mem, by.x = "record_id", by.y = "subnum")
+
+write.csv(d, file = paste0(MAIN_DIR,"/data/combined_data_", format(Sys.time(), "%Y-%m-%d"), ".csv"), row.names = FALSE)
+```

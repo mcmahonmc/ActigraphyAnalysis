@@ -1,0 +1,328 @@
+---
+title: "CAR Group Differences"
+author: "Meg McMahon"
+date: "10/31/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# CAR measures by group
+
+## Data cleaning
+
+```{r data cleaning}
+library(tidyverse)
+
+MAIN_DIR <- "~/Box/ADM_Study/ADM"
+
+#Set minimum accuracy performance threshold
+MIN_ACCURACY = 0.55
+
+#load combined data csv file
+d <- read.csv(file.choose())
+
+d$accuracy[d$accuracy < MIN_ACCURACY ] <- "NA"
+d$fo_match_accuracy[d$fo_match_accuracy < MIN_ACCURACY] <- "NA"
+d$fo_mismatch_accuracy[d$fo_mismatch_accuracy < MIN_ACCURACY] <- "NA"
+d$so_match_accuracy[d$so_match_accuracy < MIN_ACCURACY] <- "NA"
+d$so_mismatch_accuracy[d$so_mismatch_accuracy < MIN_ACCURACY] <- "NA"
+
+mem <- read.csv(paste0(MAIN_DIR, "/data/behavioral/memmatch_summary.csv"))
+
+#mem$rt <- d$rt/1000
+mem$trial <- as.character(mem$trial)
+mem$trial[mem$trial == 1] <- "face-object match"
+mem$trial[mem$trial == 2] <- "face-object mismatch"
+mem$trial[mem$trial == 3] <- "scene-object match"
+mem$trial[mem$trial == 4] <- "scene-object mismatch"
+mem$trial <- as.factor(mem$trial)
+
+mem$accuracy[mem$accuracy < 0.55] <- "NA"
+
+```
+
+
+```{r plots}
+
+#Bar plot
+ggplot(mem, aes(x=trial, y=accuracy, fill = group)) + 
+  geom_bar(position = "dodge", stat = "identity") +
+  scale_fill_brewer(palette = "Oranges") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(subset(mem, mem$accuracy > .50), aes(x=trial, y=accuracy, fill = group)) + 
+  geom_bar(position = "dodge", stat = "identity", na.rm = TRUE) +
+  scale_fill_brewer(palette = "Oranges") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+#Bar plot for reaction times across trials by group
+ggplot(mem, aes(x=trial, y=rt, fill = group)) + 
+  geom_bar(position = "dodge", stat = "identity") +
+  scale_fill_brewer(palette = "Oranges") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+t.test(IS ~ group, data = d)
+
+IS_box2 <- ggplot(d, aes(x=group, y=IS)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "Interdaily Stability") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3) 
+
+  print(IS_box2)
+
+t.test(IV ~ group, data = d)
+
+#IV_box <- boxplot(d$IV, main="Interdaily Variability")
+IV_box2 <- ggplot(d, aes(x=group, y=IV)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "Interdaily Variability") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3)
+print(IV_box2)
+
+
+t.test(RA ~ group, data = d)
+
+#RA_box <- boxplot(d$RA, main = "Relative Amplitude")
+RA_box2 <- ggplot(d, aes(x=group, y=RA)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "Relative Amplitude") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3)
+print(RA_box2)
+
+#Plots L5 activity
+t.test(L5 ~ group, data = d)
+
+#L5_box <- boxplot(d$L5, main = "L5")
+L5_box2 <- ggplot(d, aes(x=group, y=L5)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "L5") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3)
+print(L5_box2)
+
+#Plots M10 activity
+t.test(M10 ~ group, data = d)
+
+#M10_box <- boxplot(d$M10, main = "M10")
+M10_box2 <- ggplot(d, aes(x=group, y=M10)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "M10") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3)
+print(M10_box2)
+
+#Plots Up Mesor
+t.test(actupmesor ~ group, data = d)
+
+#M10_box <- boxplot(d$M10, main = "M10")
+upmesor_box <- ggplot(d, aes(x=group, y=actupmesor)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "Up-Mesor") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3)
+print(upmesor_box)
+
+#Plots Down Mesor
+t.test(actdownmesor ~ group, data = d)
+
+#M10_box <- boxplot(d$M10, main = "M10")
+downmesor_box <- ggplot(d, aes(x=group, y=actdownmesor)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "Down-Mesor") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3)
+print(downmesor_box)
+
+#Plots Mesor
+t.test(actmesor ~ group, data = d)
+
+#M10_box <- boxplot(d$M10, main = "M10")
+mesor_box <- ggplot(d, aes(x=group, y=actmesor)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "Mesor") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3)
+print(mesor_box)
+
+#Plots Amplitude
+t.test(actamp ~ group, data = d)
+
+#M10_box <- boxplot(d$M10, main = "M10")
+amplitude_box <- ggplot(d, aes(x=group, y=actamp)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "Amplitude") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3)
+print(amplitude_box)
+
+#Plots PSQI
+t.test(global_psqi ~ group, data = d)
+
+PSQI_box2 <- ggplot(data = d, aes(x=group, y=global_psqi)) + 
+  geom_boxplot() +
+  geom_jitter(na.rm = TRUE) + 
+  labs(title = "Global PSQI") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3) #p = .38 with var = FALSE
+print(PSQI_box2)
+
+#Plots Sleep Efficiency
+t.test(sleep_efficiency ~ group, data = d)
+
+PSQI_box2 <- ggplot(data = d, aes(x=group, y=sleep_efficiency)) + 
+  geom_boxplot() +
+  geom_jitter(na.rm = TRUE) + 
+  labs(title = "Sleep Efficiency") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3) +
+  ylim(0, 2)
+print(PSQI_box2)
+
+#Plots Wake Time
+waketime <- ggplot(data = d, aes(x=group, y=wake_time, color = group)) + 
+  geom_jitter(na.rm = TRUE) + 
+  labs(title = "Wake Time") +
+  theme_classic() +
+  scale_color_brewer(palette = "Oranges")
+print(waketime)
+
+#Plots Bed Time
+bedtime <- ggplot(data = d, aes(x=group, y=bed_time, color = group)) + 
+  geom_jitter(na.rm = TRUE) + 
+  labs(title = "Bed Time") +
+  theme_classic() + 
+  scale_color_brewer(palette = "Oranges")
+print(bedtime)
+
+#Plot MemMatch overall mean accuracy
+t.test(accuracy ~ group, data = d)
+
+MemMatch_box2 <- ggplot(d, aes(x=group, y=accuracy)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "MemMatch Accuracy") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3) +
+  ylim(0, 1.3)
+print(MemMatch_box2)
+
+t.test(match_accuracy ~ group, data = d)
+
+MemMatch_Match_box2 <- ggplot(d, aes(x=group, y=match_accuracy)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "MemMatch Match Trial Accuracy") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3) +
+  ylim(0, 1.3)
+print(MemMatch_Match_box2)
+
+t.test(mismatch_accuracy ~ group, data = d)
+
+MemMatch_Mismatch_box2 <- ggplot(d, aes(x=group, y=mismatch_accuracy)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "MemMatch Mismatch Trial Accuracy") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3) +
+  ylim(0, 1.3)
+print(MemMatch_Mismatch_box2)
+
+t.test(rt ~ group, data = d)
+
+RT_box2 <- ggplot(d, aes(x=group, y=rt)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "RT") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3)
+print(RT_box2)
+
+t.test(match_RT_C ~ group, data = d)
+
+RT_Match_C_box2 <- ggplot(d, aes(x=group, y=match_RT_C)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "RT Correct Match Trials") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3)
+print(RT_Match_C_box2)
+
+t.test(mismatch_RT_C ~ group, data = d)
+
+RT_Mismatch_C_box2 <- ggplot(d, aes(x=group, y=mismatch_RT_C)) + 
+  geom_boxplot() +
+  geom_jitter() + 
+  labs(title = "RT Correct Mismatch Trials") +
+  theme_classic() +
+  stat_compare_means(method = "t.test", label.x = 1.3)
+print(RT_Mismatch_C_box2)
+
+BOX <- ggplot(subset(subset(mem, group = "OA"), accuracy > .50), aes(x=trial, y=accuracy) )+ 
+  geom_boxplot(aes(fill = group)) +
+  geom_jitter() + 
+  labs(title = "Accuracy Across Trials") +
+  theme_classic() +
+  scale_fill_brewer(palette = "Oranges")
+print(BOX)
+
+BOX <- ggplot(subset(mem, group = "OA"), aes(x=trial, y=rt) )+ 
+  geom_boxplot(aes(fill = group)) +
+  geom_jitter() + 
+  labs(title = "RT Cor Across Trials") +
+  theme_classic() +
+  scale_fill_brewer(palette = "Oranges")
+print(BOX)
+
+#Accuracy across trials by group
+t.test(d$accuracy ~d$group)
+
+t.test(d$fo_match_accuracy ~d$group)
+
+t.test(d$fo_mismatch_accuracy ~d$group)
+
+t.test(d$so_match_accuracy ~d$group)
+
+t.test(d$so_mismatch_accuracy ~d$group)
+
+t.test(d$match_accuracy ~d$group)
+
+t.test(d$mismatch_accuracy ~d$group)
+
+
+
+#RT across trials by group
+t.test(d$rt ~d$group)
+
+t.test(d$fo_match_RT_C ~d$group)
+
+t.test(d$fo_match_RT_C ~d$group)
+
+t.test(d$so_match_RT_C ~d$group)
+
+t.test(d$so_mismatch_RT_C ~d$group)
+
+t.test(d$match_RT_C ~d$group)
+
+t.test(d$match_RT_C ~d$group)
+
+```
+

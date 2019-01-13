@@ -1,0 +1,116 @@
+---
+title: "CAR-FC Analysis"
+author: "Megan McMahon"
+date: "12/3/2018"
+output: html_document
+---
+
+title: "CAR MemMatch Analysis"
+author: "Meg McMahon"
+date: "10/26/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(plyr)
+library(tidyverse)
+#library(reshape2)
+#library(magrittr)
+#library(broom)
+library(knitr)
+#library(RColorBrewer)
+library(ggcorrplot)
+#library(raster)
+
+```
+
+
+```{r}
+#Settings
+id_length=5
+
+#Choose combined dataset from CAR_measures.Rmd output
+#d1 <- read.csv(file.choose())
+d <- read.csv("~/Box/ADM_Study/ADM/data/combined_data_2018-11-19.csv")
+
+```
+
+
+# Data Cleaning
+```{r data cleaning}
+
+d$sex[substr(d$sex, 0, 1) == "f" | substr(d$sex, 0, 1) == "F"] <- "F"
+d$sex[substr(d$sex, 0, 1) == "m" | substr(d$sex, 0, 1) == "M"] <- "M"
+d$sex <- factor(d$sex)
+
+
+d$edu <- substr(d$edu, 0, 2)
+d$edu <- str_pad(d$edu, 2, pad = "0")
+d$edu <- as.numeric(d$edu)
+
+```
+
+# Demographics
+```{r demographics}
+d %>%
+  group_by(group) %>%
+  summarize(N = n(), 
+            age_mean = mean(age), age_sd = sd(age), 
+            Female = sum(sex == "F"), Male = sum(sex == "M"),
+            years_edu = mean(edu), edu_sd = sd(edu))
+```
+
+
+```{r}
+#Gets files and list of 4 digit subject IDs
+files <- list.files("~/Box/ADM_Study/ADM/data/NetMetrics_ADM", pattern= "_net_metrics_sps_mean.csv", full.names = TRUE)
+record_id <- substr(basename(files),1, id_length)
+
+net=data.frame(c())
+for (i in 1:length(files)) {
+  filename <- paste0("~/Box/ADM_Study/ADM/data/NetMetrics_ADM/", record_id[i],"_net_metrics_sps_mean.csv")
+  newline <- read.csv(files[i], skip = 0, header = TRUE, row.names = NULL)
+  newline$record_id=record_id[i]
+  net <- rbind.fill(net, newline)
+    
+  #Write out if haven't saved this yet
+  write.csv(net, file=(paste0("~/Box/ADM_Study/ADM/data/net_metrics_", format(Sys.time(), "%Y-%m-%d"), ".csv")),row.names=FALSE)
+  
+  }
+
+```
+
+
+```{r}
+# Load net - TO DO
+
+#Select sleep variables
+d$group = d$group.x
+d2 <- dplyr::select(d, group, IS:fnlrgact)
+
+d2 <- merge(d2, net, by = "record_id")
+
+d2[,2:length(d2)] <- sapply(d2[,2:length(d2)],as.numeric)
+d2 <- d2[complete.cases(d2),]
+
+nOA <- sum(d2$group == "OA")
+nYA <- sum(d2$group == "YA")
+
+d2_YA <- subset(d2, d2$group == "YA")
+d2_OA <- subset(d2, d2$group == "OA")
+d2[c("group")] <- list(NULL); d2_OA[c("group")] <- list(NULL); d2_YA[c("group")] <- list(NULL)
+
+d2_cor <- cor(d2, method = "pearson")
+d2_cor_OA <- cor(d2_OA, method = "pearson")
+d2_cor_YA <- cor(d2_YA, method = "pearson")
+
+ggcorrplot(d2_cor, p.mat = cor_pmat(d2), colors = c("red", "white", "orange"), ggtheme = ggplot2::theme_minimal, hc.order = FALSE, insig = 'blank')
+
+ggcorrplot(d2_cor_YA, p.mat = cor_pmat(d2_YA), colors = c("red", "white", "orange"), ggtheme = ggplot2::theme_minimal, hc.order = FALSE, insig = 'blank')
+
+ggcorrplot(d2_cor_OA, p.mat = cor_pmat(d2_OA), colors = c("red", "white", "orange"), ggtheme = ggplot2::theme_minimal, hc.order = FALSE, insig = 'blank')
+
+```
+

@@ -1,0 +1,88 @@
+---
+title: "Net_ADM"
+author: "Meg McMahon"
+date: "12/12/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(RColorBrewer)
+library(ggcorrplot)
+```
+
+## Net Metrics by Group
+
+```{r net metrics by group}
+
+
+net <- read.csv("~/Box/ADM_Study/ADM/data/netmetrics_corr_mean_cat.csv")
+
+net$record_id <- as.numeric(net$record_id)
+net$group[ net$record_id < 40000 ] <- "YA"
+net$group[ net$record_id >= 40000] <- "OA"
+
+net %>%
+  group_by(group) %>%
+  summarize(N = n())
+
+d <- read.csv("~/Box/ADM_Study/ADM/data/combined_data_2018-11-19.csv")
+
+
+d$sex[substr(d$sex, 0, 1) == "f" | substr(d$sex, 0, 1) == "F"] <- "F"
+d$sex[substr(d$sex, 0, 1) == "m" | substr(d$sex, 0, 1) == "M"] <- "M"
+d$sex <- factor(d$sex)
+
+
+d$edu <- substr(d$edu, 0, 2)
+d$edu <- str_pad(d$edu, 2, pad = "0")
+d$edu <- as.numeric(d$edu)
+
+net2 <- merge(net, d, by = "record_id")
+
+net2 %>%
+  group_by(group.x) %>%
+  summarize(N = n(), 
+            age_mean = mean(age), age_sd = sd(age), 
+            Female = sum(sex == "F"), Male = sum(sex == "M"),
+            years_edu = mean(edu), edu_sd = sd(edu))
+
+
+t.test(average_local_efficiency_mean ~ group, data = net)
+net%>%  
+  ggplot(aes(y = average_local_efficiency_mean, x = group, fill = group)) +
+  geom_boxplot(fill = brewer.pal(8, "Paired")[7:8]) +  
+  theme_classic() 
+
+t.test(degree_assortativity_coefficient_mean ~ group, data = net)
+net%>%  
+  ggplot(aes(y = degree_assortativity_coefficient_mean, x = group, fill = group)) +
+  geom_boxplot(fill = brewer.pal(8, "Paired")[7:8]) +  
+  theme_classic() 
+
+t.test(global_efficiency_mean ~ group, data = net)
+net%>%  
+  ggplot(aes(y = global_efficiency_mean, x = group, fill = group)) +
+  geom_boxplot(fill = brewer.pal(8, "Paired")[7:8]) +  
+  theme_classic() 
+
+t.test(transitivity_mean ~ group, data = net)
+net%>%  
+  ggplot(aes(y = transitivity_mean, x = group, fill = group)) +
+  geom_boxplot(fill = brewer.pal(8, "Paired")[7:8]) +  
+  theme_classic() 
+
+t.test(average_clustering_mean ~ group, data = net)
+net%>%  
+  ggplot(aes(y = average_clustering_mean, x = group, fill = group)) +
+  geom_boxplot(fill = brewer.pal(8, "Paired")[7:8]) +  
+  theme_classic() 
+
+t.test(average_diversity_coefficient_mean ~ group, data = net)
+net%>%  
+  ggplot(aes(y = average_diversity_coefficient_mean, x = group, fill = group)) +
+  geom_boxplot(fill = brewer.pal(8, "Paired")[7:8]) +  
+  theme_classic() 
+```
+

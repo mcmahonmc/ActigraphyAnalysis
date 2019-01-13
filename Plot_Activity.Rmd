@@ -1,0 +1,79 @@
+---
+title: "Activity Plots"
+author: "Meg McMahon"
+date: "11/19/2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(tidyverse)
+library(lubridate)
+```
+
+
+
+```{r plots, echo=FALSE}
+
+#Select the FIRST FILE in the "new" actigraphy data you wish to analyze
+#DATA_PATH <- file.choose()
+DATA_PATH <- "/Users/megmcmahon/Box/ADM_Study/ADM/data/actigraphy/cleaned_09-21-2018/new/30003_10_23_2017_1_25_00_PM_New_Analysis.csv"
+
+MAIN_DIR <- substr(DATA_PATH, 1, unlist(stringr::str_locate_all(pattern ='/data/', DATA_PATH))[1])
+ACT_DIR <- substr(DATA_PATH, 1, unlist(stringr::str_locate_all(pattern ='/new/', DATA_PATH))[2])
+
+
+#SETTINGS
+#set sample rate of watch
+SR = 2/60
+
+#set minimum number of days subjects must wear the watch
+act_period = 10
+
+#set max percentage of missing activity values a subject can have after cleaning script
+min_activity_values = 0.10
+
+#set number of digits in record id -- can automate this later
+id_length = 5
+
+
+#Gets files and list of 4 digit subject IDs
+files <- list.files(paste0(ACT_DIR), pattern= "New_Analysis.csv", full.names = TRUE)
+record_id <- substr(basename(files),1, id_length)
+
+# Get list of duplicated files
+SPLIT <- strsplit(files, "/")
+dup_files = files[duplicated(substr(sapply(SPLIT, "[", 10), 0, id_length))]
+dup_records = substr(basename(dup_files), 1, id_length)
+
+# Read in .csv files, set new wd and save .txt to new directory, reset directory
+discard = c()
+for (i in 1:length(files)) {
+  filename <- paste0(ACT_DIR, "/text/", record_id[i],".txt")
+  act <- read.csv(files[i], skip = 1, header = TRUE, row.names = NULL)
+  act [,1] <- ymd_hms(as.character(act[,1]), tz = "UTC")
+  colnames(act) <- c("datetime", "activity")
+  
+  if (round(difftime(tail(act$datetime, 1), head(act$datetime, 1))) < act_period) {
+    error = paste0("DISCARD SUBJECT: ", record_id[i], " wore actigraph for ", difftime(tail(act$datetime, 1), head(act$datetime, 1)), " days")
+    print(error)
+    discard_new <- cbind(record_id[i], error)
+    discard <- rbind(discard, discard_new)
+    next
+  } else {
+    
+    #only keep most recent 10 days of data for all subjects
+    start = ymd_hms(tail(act$datetime, 1), tz="UTC") - days(act_period)
+    act <- act[act$datetime >= start,]
+    
+    #sampled every 6 hours
+    print(ggplot(act[seq(1, nrow(act), 6*120), ], aes(x = datetime, y = activity)) +
+      geom_step() +
+      theme_classic() + 
+      ggtitle(record_id[i]))
+  }
+}
+  
+```
+
