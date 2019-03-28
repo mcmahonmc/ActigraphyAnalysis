@@ -1,0 +1,415 @@
+---
+title: "ADM Quartile Analysis"
+author: "Meg McMahon"
+date: "3/10/2019"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(tidyverse)
+library(reshape2)
+library(broom)
+library(knitr)
+library(RColorBrewer)
+library(ggcorrplot)
+
+```
+
+
+1) Data cleaning
+2) Between age group differences for circadian measures
+3) Regression analysis by all subjects, younger adults, and older adults for MemMatch accuracy and reaction time
+4) Regression analysis by face-object vs scene-object MemMatch trial for all subjects
+
+#### v2
+
+Note: 01-23 v1 does NOT have the 10 day limit on actigraphy data. V2 takes 10 days prior to scanning session.
+
+```{r settings}
+
+MIN_ACCURACY = 0.55
+
+
+#Choose combined dataset from CAR_measures.Rmd output
+
+#d1 <- read.csv(file.choose())
+d1 <- read.csv("~/Box/ADM/data/combined_data_2019-01-23-v2.csv")
+
+#Choose total sleep time excel sheet
+#tst <- readxl::read_xlsx(file.choose())
+#tst <- readxl::read_xlsx("~/Box/CogNeuroLab/Aging Decision Making R01/Data/CAR/Average Sleep Time.xlsx")
+
+#Read in all memmatch results
+mem <- read.csv("~/Box/ADM/data/summary/memmatch_results.csv")
+
+#d <- merge(d1, tst, by = "record_id")
+d <- d1
+```
+
+
+# Data Cleaning
+
+# Overall Demographics
+```{r}
+
+d <- subset(d, ! d$record_id == "30412")
+d <- subset(d, ! d$record_id == "30242")
+
+d$group[d$age <= 30]<- "YA"
+d$group[d$age >= 60] <- "OA"
+d$group[d$age >30 && d$age < 60] <- "NULL"
+
+d$sex[substr(d$sex, 0, 1) == "f" | substr(d$sex, 0, 1) == "F"] <- "F"
+d$sex[substr(d$sex, 0, 1) == "m" | substr(d$sex, 0, 1) == "M"] <- "M"
+d$sex <- factor(d$sex)
+
+
+d$edu <- substr(d$edu, 0, 2)
+d$edu <- str_pad(d$edu, 2, pad = "0")
+d$edu <- as.numeric(d$edu)
+
+d$actquotient <- d$actamp/d$actmesor
+
+d %>%
+  group_by(group) %>%
+  summarize(N = n(), 
+            age_mean = mean(age), age_sd = sd(age), 
+            Female = sum(sex == "F"), Male = sum(sex == "M"),
+            years_edu = mean(edu), edu_sd = sd(edu))
+```
+
+Not in dataset: "30003" "30027" "30101" "40511" "40653" "40707" "40733" "40738"
+
+
+## New Demographics
+Excluding participants with accuracy < 0.55
+
+```{r data cleaning}
+d$record_id[d$accuracy < 0.55]
+
+
+d2 <- subset(d, accuracy > 0.55)
+
+d <- d2
+
+d %>%
+  group_by(group) %>%
+  summarise(n = n(), min_acc = min(accuracy, na.rm = TRUE), max_acc = max(accuracy, na.rm = TRUE), mean_acc=mean(accuracy, na.rm = TRUE), sd_acc=sd(accuracy, na.rm = TRUE), min_rt = min(rt, na.rm = TRUE), max_rt = max(rt, na.rm = TRUE), mean_rt = mean(rt, na.rm = TRUE), sd_rt = sd(rt, na.rm = TRUE))
+
+
+
+```
+
+# Demographics
+```{r demographics}
+d %>%
+  group_by(group) %>%
+  summarize(N = n(), 
+            age_mean = mean(age), age_sd = sd(age), 
+            Female = sum(sex == "F"), Male = sum(sex == "M"),
+            years_edu = mean(edu), edu_sd = sd(edu))
+```
+
+## Accuracy by group
+```{r}
+#Accuracy by group
+t <- t.test(accuracy ~ group, data = d1)
+t
+d1%>%  
+  subset(d1$accuracy > MIN_ACCURACY) %>%
+  ggplot(aes(x = group, y = accuracy, color = group)) +
+  geom_boxplot(lwd=1.5) + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  labs(caption= paste("t =", round(t$statistic, 2), "p = ", round(t$p.value, 3))) +
+  theme(plot.caption = element_text(size = 12)) +
+  ggsave('~/Desktop/accuracy.png')
+  
+
+d %>%
+  subset(d$accuracy > MIN_ACCURACY) %>%
+  group_by(group) %>%
+  summarise(n = n(), min = min(accuracy), median = median(accuracy), mean = mean(accuracy), max = max(accuracy))
+
+```
+
+## Reaction time by group
+```{r}
+d2.mlt <- melt(d2, id.vars=c("group", "accuracy", "rt"))
+
+#Reaction time by group
+t <- t.test(rt ~ group, data = d1)
+t
+d2.mlt%>%  
+  subset(d2$accuracy > MIN_ACCURACY) %>%
+  ggplot(aes(x = group, y = rt, color = group)) +
+  geom_boxplot(lwd=1.5) + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(plot.caption = element_text(size = 12)) +
+  labs(caption= paste("t =", round(t$statistic, 2),round(t$p.value, 3))) +
+  ggsave('~/Desktop/rt.png')
+
+d %>%
+  subset(d$accuracy > MIN_ACCURACY) %>%
+  group_by(group) %>%
+  summarise(n = n(), min = min(rt), median = median(rt), mean = mean(rt), max = max(rt))
+
+```
+
+# Quantile analysis
+### Create quantiles
+
+```{r}
+# nparACT values
+d$ISquant[d$IS > quantile(d$IS)[4]] <- "upper"
+d$ISquant[d$IS < quantile(d$IS)[2]] <- "lower"
+
+d$IVquant[d$IV > quantile(d$IV)[4]] <- "upper"
+d$IVquant[d$IV < quantile(d$IV)[2]] <- "lower"
+
+d$RAquant[d$RA > quantile(d$RA)[4]] <- "upper"
+d$RAquant[d$RA < quantile(d$RA)[2]] <- "lower"
+
+d$M10quant[d$M10 > quantile(d$M10)[4]] <- "upper"
+d$M10quant[d$M10 < quantile(d$M10)[2]] <- "lower"
+
+d$L5quant[d$L5 > quantile(d$L5)[4]] <- "upper"
+d$L5quant[d$L5 < quantile(d$L5)[2]] <- "lower"
+
+d$ampquant[d$actamp > quantile(d$actamp)[4]] <- "upper"
+d$ampquant[d$actamp < quantile(d$actamp)[2]] <- "lower"
+
+d$ampquotquant[d$actquotient > quantile(d$actquotient)[4]] <- "upper"
+d$ampquotquant[d$actquotient < quantile(d$actquotient)[2]] <- "lower"
+
+d$upmesquant[d$actupmesor > quantile(d$actupmesor)[4]] <- "upper"
+d$upmesquant[d$actupmesor < quantile(d$actupmesor)[2]] <- "lower"
+
+d$downmesquant[d$actdownmesor > quantile(d$actdownmesor)[4]] <- "upper"
+d$downmesquant[d$actdownmesor < quantile(d$actdownmesor)[2]] <- "lower"
+
+d$widthquant[d$actbeta > quantile(d$actbeta)[4]] <- "upper"
+d$widthquant[d$actbeta < quantile(d$actbeta)[2]] <- "lower"
+
+d$widthratquant[d$actwidthratio > quantile(d$actwidthratio)[4]] <- "upper"
+d$widthratquant[d$actwidthratio < quantile(d$actwidthratio)[2]] <- "lower"
+
+d$minquant[d$actmin > quantile(d$actmin)[4]] <- "upper"
+d$minquant[d$actmin <= quantile(d$actmin)[2]] <- "lower"
+
+
+# by group
+OA <- subset(d, group == "OA")
+YA <- subset(d, group == "YA")
+
+```
+
+### Analysis - Mean Accuracy on MemMatch Task
+```{r}
+
+#note: doesn't matter if specify !is.na() result is same
+t.test(accuracy ~ ISquant, d[!is.na(d$ISquant),]) # NS p = 0.092, p = 0.092
+t.test(accuracy ~ IVquant, d) # NS
+t.test(accuracy ~ RAquant, d) # NS
+t.test(accuracy ~ M10quant, d) # NS
+t.test(accuracy ~ L5quant, d) # NS
+
+t.test(accuracy ~ ISquant, OA) # NS
+t.test(accuracy ~ IVquant, OA) # NS
+t.test(accuracy ~ RAquant, OA) # NS
+t.test(accuracy ~ M10quant, OA) # NS
+t.test(accuracy ~ L5quant, OA) # NS
+
+t.test(accuracy ~ ISquant, YA) # NS
+t.test(accuracy ~ IVquant, YA) # NS
+t.test(accuracy ~ RAquant, YA) # NS
+t.test(accuracy ~ M10quant, YA) # NS p = 0.08771
+t.test(accuracy ~ L5quant, YA) # NS
+
+# cosinor values
+t.test(accuracy ~ ampquant, d) # NS p = 0.063
+t.test(accuracy ~ ampquotquant, d) #NS p = 0.073
+t.test(accuracy ~ upmesquant, d) # NS
+t.test(accuracy ~ downmesquant, d) # NS
+t.test(accuracy ~ widthquant, d) # NS
+t.test(accuracy ~ widthratquant, d) # NS
+t.test(accuracy ~ minquant, d) # p = 0.04577
+
+t.test(accuracy ~ ampquant, OA) # NS p = 0.0834
+t.test(accuracy ~ ampquotquant, OA) #NS 
+t.test(accuracy ~ upmesquant, OA) # NS
+t.test(accuracy ~ downmesquant, OA) # p = 0.0060 **
+t.test(accuracy ~ widthquant, OA) # p = 0.01236 **
+t.test(accuracy ~ widthratquant, OA) # NS
+t.test(accuracy ~ minquant, OA) # NS p = 0.1186
+
+t.test(accuracy ~ ampquant, YA) # NS 
+t.test(accuracy ~ ampquotquant, YA) #NS
+t.test(accuracy ~ upmesquant, YA) # NS p = 0.06406
+t.test(accuracy ~ downmesquant, YA) # NS
+t.test(accuracy ~ widthquant, YA) # NS p = 0.08833
+t.test(accuracy ~ widthratquant, YA) # NS
+t.test(accuracy ~ minquant, YA) # NS
+
+```
+
+### Accuracy Results
+#### OA with later down-mesor show greater mean accuracy on MemMatch task
+#### OA with smaller width values (alpha) have greater mean accuracy on MemMatch task
+#### Participants with smaller width values (alpha) have greater mean accuracy on MemMatch task across age groups
+
+```{r}
+#OA with later down-mesor show greater mean accuracy on MemMatch task
+ggplot(data = d[!is.na(d$downmesquant),], aes(x = downmesquant, y = accuracy, color = downmesquant)) +
+  geom_boxplot(lwd=1.0) + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(plot.caption = element_text(size = 12)) +
+  labs(title= "Accuracy differences by down-mesor quantile") #+
+  #ggsave('~/Box/ADM/quantile/downmes_accuracy.png')
+
+ggplot(data = d[!is.na(d$downmesquant),], aes(x = group, y = accuracy, color = downmesquant)) +
+  geom_boxplot(lwd=1.0) + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(plot.caption = element_text(size = 12)) +
+  labs(title= "Accuracy differences by down-mesor quantile", caption = "OA, t=-3.3551, p=0.006014") #+
+  #ggsave('~/Box/ADM/quantile/downmes_accuracy.png')
+
+#OA with smaller width values (alpha) have greater mean accuracy on MemMatch task
+ggplot(data = d[!is.na(d$widthquant),], aes(x = widthquant, y = accuracy, color = widthquant)) +
+  geom_boxplot(lwd=1.0) + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(plot.caption = element_text(size = 12)) +
+  labs(title= "Accuracy differences by width (alpha) quantile") 
+
+ggplot(data = d[!is.na(d$widthquant),], aes(x = group, y = accuracy, color = widthquant)) +
+  geom_boxplot(lwd=1.0) + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(plot.caption = element_text(size = 12)) +
+  labs(title= "Accuracy differences by width (alpha) quantile", caption = "OA, t=2.725, p=0.01236") #+
+  #ggsave('~/Box/ADM/quantile/width_accuracy.png')
+
+#Participants with smaller width values (alpha) have greater mean accuracy on MemMatch task across age groups
+ggplot(data = d[!is.na(d$minquant),], aes(x = minquant, y = accuracy, color = minquant)) +
+  geom_boxplot(lwd=1.0) + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(plot.caption = element_text(size = 12)) +
+  labs(title= "Accuracy differences by minimum cosinor rhythm quantile", caption = "Across age groups, t=1.8628, p=0.06934")
+
+ggplot(data = d[!is.na(d$minquant),], aes(x = group, y = accuracy, color = minquant)) +
+  geom_boxplot(lwd=1.0) + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(plot.caption = element_text(size = 12)) +
+  labs(title= "Accuracy differences by minimum cosinor rhythm quantile") #+
+  #ggsave('~/Box/ADM/quantile/width_accuracy.png')
+```
+
+### Analysis - RT on correct MemMatch trials
+```{r}
+t.test(rt ~ ISquant, d[!is.na(d$ISquant),]) # NS
+t.test(rt ~ IVquant, d) # NS
+t.test(rt ~ RAquant, d) # NS
+t.test(rt ~ M10quant, d) # NS
+t.test(rt ~ L5quant, d) # NS
+
+t.test(rt ~ ISquant, OA) # NS
+t.test(rt ~ IVquant, OA) # NS
+t.test(rt ~ RAquant, OA) # NS
+t.test(rt ~ M10quant, OA) # NS
+t.test(rt ~ L5quant, OA) # NS
+
+t.test(rt ~ ISquant, YA) # NS
+t.test(rt ~ IVquant, YA) # NS
+t.test(rt ~ RAquant, YA) # NS
+t.test(rt ~ M10quant, YA) # NS p = 0.0961
+t.test(rt ~ L5quant, YA) # NS
+
+# cosinor values
+t.test(rt ~ ampquant, d) # NS p = 0.08134
+t.test(rt ~ ampquotquant, d) # t = 2.4816, p = 0.01741 *
+t.test(rt ~ upmesquant, d) # NS
+t.test(rt ~ downmesquant, d) # t = -3.6015, p = 0.0009332 ***
+t.test(rt ~ widthquant, d) # NS p = 0.06611
+t.test(rt ~ widthratquant, d) # NS p = 0.07658
+t.test(rt ~ minquant, d) # t = -2.2111, p = 0.03298 *
+
+t.test(rt ~ ampquant, OA) # NS
+t.test(rt ~ ampquotquant, OA) #NS 
+t.test(rt ~ upmesquant, OA) # NS
+t.test(rt ~ downmesquant, OA) # t = 2.7261, p = 0.03775 *
+t.test(rt ~ widthquant, OA) # NS
+t.test(rt ~ widthratquant, OA) # NS
+t.test(rt ~ minquant, OA) # NS
+
+t.test(rt ~ ampquant, YA) # NS 
+t.test(rt ~ ampquotquant, YA) #NS
+t.test(rt ~ upmesquant, YA) # NS
+t.test(rt ~ downmesquant, YA) # NS
+t.test(rt ~ widthquant, YA) # NS p = 0.08833
+t.test(rt ~ widthratquant, YA) # NS
+t.test(rt ~ minquant, YA) # NS
+```
+
+
+```{r}
+#Participants with greater amplitude quotient values have greater mean accuracy on MemMatch task across age groups
+ggplot(data = d[!is.na(d$ampquotquant),], aes(x = ampquotquant, y = accuracy, color = ampquotquant)) +
+  geom_boxplot(lwd=1.0) + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(plot.caption = element_text(size = 12)) +
+  labs(title= "Accuracy differences by amplitude quotient quantile", caption = "Across age groups, t=2.4816, p=0.01741") #+
+  #ggsave('~/Box/ADM/quantile/ampquot_rt.png')
+
+ggplot(data = d[!is.na(d$ampquotquant),], aes(x = group, y = accuracy, color = ampquotquant)) +
+  geom_boxplot(lwd=1.0) + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(plot.caption = element_text(size = 12)) +
+  labs(title= "Accuracy differences by amplitude quotient quantile") #+
+  #ggsave('~/Box/ADM/quantile/ampquot_rt.png')
+
+#Participants with later down-mesor have greater mean accuracy on MemMatch task across age groups
+ggplot(data = d[!is.na(d$downmesquant),], aes(x = downmesquant, y = accuracy, color = downmesquant)) +
+  geom_boxplot(lwd=1.0) + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(plot.caption = element_text(size = 12)) +
+  labs(title= "Accuracy differences by down-mesor quantile", caption = "Across age groups, t=3.6015, p=0.0009332") #+
+  #ggsave('~/Box/ADM/quantile/downmesor_rt.png')
+
+ggplot(data = d[!is.na(d$downmesquant),], aes(x = group, y = accuracy, color = downmesquant)) +
+  geom_boxplot(lwd=1.0) + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(plot.caption = element_text(size = 12)) +
+  labs(title= "Accuracy differences by down-mesor quantile") #+
+  #ggsave('~/Box/ADM/quantile/downmesor_rt.png')
+
+#Participants with lower minimums in their cosinor rhythm have greater mean accuracy on MemMatch task across age groups
+ggplot(data = d[!is.na(d$minquant),], aes(x = minquant, y = accuracy, color = minquant)) +
+  geom_boxplot(lwd=1.0) + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(plot.caption = element_text(size = 12)) +
+  labs(title= "Accuracy differences by minimum quantile", caption = "Across age groups, t = -2.2111, p = 0.03298") #+
+  #ggsave('~/Box/ADM/quantile/downmesor_rt.png')
+
+ggplot(data = d[!is.na(d$minquant),], aes(x = group, y = accuracy, color = minquant)) +
+  geom_boxplot(lwd=1.0) + 
+  theme_classic() + 
+  scale_colour_manual(values = brewer.pal(8, "Paired")[7:8]) +
+  theme(plot.caption = element_text(size = 12)) +
+  labs(title= "Accuracy differences by minimum quantile") #+
+  #ggsave('~/Box/ADM/quantile/downmesor_rt.png')
+
+```
+
