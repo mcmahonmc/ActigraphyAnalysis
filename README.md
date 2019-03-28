@@ -15,7 +15,7 @@ This also uses the nparACT package (Blume et al, 2016) to compute circadian meas
 Further descriptions of circadian measures can be found in the Word file Circadian_Measures_Description.docx.
 
 ### 3) group level analyses 
-Various scripts examining age group differences with respect to circadian measures and their relationship to associative memory performance, neuropsch test scores, and functional connectivity network metrics (computed using [PyNets](https://github.com/dPys/PyNets) are provided. 
+Various scripts examining age group differences with respect to circadian measures and their relationship to associative memory performance, neuropsch test scores, and functional connectivity network metrics (computed using [PyNets](https://github.com/dPys/PyNets)) are provided. 
 
 
 ## References
